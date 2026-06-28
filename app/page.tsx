@@ -41,6 +41,8 @@ export default function Home() {
         functionName: "post_job",
         args: [jobDesc],
         gas: BigInt(20000000),
+        gasPrice: BigInt(1000000000),
+        type: 'legacy',
       });
       setTxHash(tx);
       setJobDesc("");
@@ -61,6 +63,8 @@ export default function Home() {
         functionName: "submit_work",
         args: [jobId, url],
         gas: BigInt(20000000),
+        gasPrice: BigInt(1000000000),
+        type: 'legacy',
       });
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
@@ -78,6 +82,8 @@ export default function Home() {
         functionName: "approve_work",
         args: [jobId],
         gas: BigInt(20000000),
+        gasPrice: BigInt(1000000000),
+        type: 'legacy',
       });
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
