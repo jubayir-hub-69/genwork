@@ -2,12 +2,17 @@
 
 import { useState, useEffect } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract, useReadContract } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "./constants";
 
+// GenLayer SDK Imports
+import { createClient } from "genlayer-js";
+import { testnetBradbury } from "genlayer-js/chains";
+import { TransactionStatus } from "genlayer-js/types";
+
 export default function Home() {
-  const { isConnected } = useAccount();
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { address, isConnected } = useAccount();
+  const [isPending, setIsPending] = useState(false);
 
   const [jobDesc, setJobDesc] = useState("");
   const [txHash, setTxHash] = useState("");
@@ -31,21 +36,44 @@ export default function Home() {
     }
   }, [jobsData]);
 
+  // GenLayer SDK Transaction Function
+  const sendGenLayerTransaction = async (functionName: string, args: any[]) => {
+    if (!address) throw new Error("Wallet not connected");
+
+    // Create client with wallet address
+    const client = createClient({
+      chain: testnetBradbury,
+      account: address as `0x${string}`,
+    });
+
+    // Switch the wallet to the correct network
+    await client.connect("testnetBradbury");
+
+    // Send transaction
+    const hash = await client.writeContract({
+      address: CONTRACT_ADDRESS as `0x${string}`,
+      functionName: functionName,
+      args: args,
+      value: BigInt(0),
+    });
+
+    return hash;
+  };
+
   const handlePostJob = async () => {
     if (!jobDesc) return alert("Fill job description");
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "post_job",
-        args: [jobDesc],
-      });
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc]);
       setTxHash(tx);
       setJobDesc("");
       setTimeout(() => refetch(), 5000);
     } catch (error) {
-      console.error(error);
+      console.error("Transaction Error:", error);
+      alert("Transaction failed or rejected by user. Check console.");
+    } finally {
+      setIsPending(false);
     }
   };
 
@@ -53,33 +81,29 @@ export default function Home() {
     const url = inputUrls[jobId];
     if (!url) return alert("Paste URL first");
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "submit_work",
-        args: [jobId, url],
-      });
+      const tx = await sendGenLayerTransaction("submit_work", [jobId, url]);
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsPending(false);
     }
   };
 
   const handleApproveWork = async (jobId: string) => {
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "approve_work",
-        args: [jobId],
-      });
+      const tx = await sendGenLayerTransaction("approve_work", [jobId]);
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsPending(false);
     }
   };
 
@@ -116,7 +140,7 @@ export default function Home() {
                 disabled={isPending} 
                 className="w-full bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition"
               >
-                Post Job
+                {isPending ? "Processing..." : "Post Job"}
               </button>
             </div>
 
