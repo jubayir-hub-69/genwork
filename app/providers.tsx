@@ -1,29 +1,19 @@
-'use client';
+"use client";
 
-import '@rainbow-me/rainbowkit/styles.css';
-import { getDefaultConfig, RainbowKitProvider, darkTheme } from '@rainbow-me/rainbowkit';
-import { WagmiProvider } from 'wagmi';
-import { QueryClientProvider, QueryClient } from '@tanstack/react-query';
-
-// GenLayer Testnet (Bradbury) Custom Network Configuration
-const genLayerTestnet = {
-  id: 4221,
-  name: 'GenLayer Bradbury',
-  iconUrl: 'https://docs.genlayer.com/favicon.ico',
-  iconBackground: '#fff',
-  nativeCurrency: { name: 'GEN Token', symbol: 'GEN', decimals: 18 },
-  rpcUrls: {
-    default: { http: ['https://rpc-bradbury.genlayer.com'] },
-  },
-  blockExplorers: {
-    default: { name: 'GenLayer Explorer', url: 'https://explorer-bradbury.genlayer.com' },
-  },
-};
+import * as React from "react";
+import {
+  RainbowKitProvider,
+  getDefaultConfig,
+} from "@rainbow-me/rainbowkit";
+import { WagmiProvider } from "wagmi";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { mainnet, sepolia } from "wagmi/chains";
+import "@rainbow-me/rainbowkit/styles.css";
 
 const config = getDefaultConfig({
-  appName: 'Genwork',
-  projectId: 'a87265882679dc8b17dc94fa915a1331', // Demo Project ID
-  chains: [genLayerTestnet],
+  appName: "Genwork",
+  projectId: "eb874c3711679c7e6dbe8051f9507d2a",
+  chains: [mainnet, sepolia],
   ssr: true,
 });
 
@@ -33,7 +23,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <WagmiProvider config={config}>
       <QueryClientProvider client={queryClient}>
-        <RainbowKitProvider theme={darkTheme()}>
+        <RainbowKitProvider>
           {children}
         </RainbowKitProvider>
       </QueryClientProvider>
