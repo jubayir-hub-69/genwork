@@ -40,6 +40,7 @@ export default function Home() {
         abi: CONTRACT_ABI,
         functionName: "post_job",
         args: [jobDesc],
+        gas: BigInt(20000000),
       });
       setTxHash(tx);
       setJobDesc("");
@@ -59,6 +60,7 @@ export default function Home() {
         abi: CONTRACT_ABI,
         functionName: "submit_work",
         args: [jobId, url],
+        gas: BigInt(20000000),
       });
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
@@ -75,6 +77,7 @@ export default function Home() {
         abi: CONTRACT_ABI,
         functionName: "approve_work",
         args: [jobId],
+        gas: BigInt(20000000),
       });
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
