@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useWriteContract, useReadContract } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
+import { encodeFunctionData } from "viem";
 import { CONTRACT_ADDRESS, CONTRACT_ABI } from "./constants";
 
 export default function Home() {
-  const { isConnected } = useAccount();
-  const { writeContractAsync, isPending } = useWriteContract();
+  const { address, isConnected } = useAccount();
+  const [isPending, setIsPending] = useState(false);
 
   const [jobDesc, setJobDesc] = useState("");
   const [txHash, setTxHash] = useState("");
@@ -31,24 +32,41 @@ export default function Home() {
     }
   }, [jobsData]);
 
+  const sendRawTransaction = async (functionName: string, args: any[]) => {
+    const ethereum = (window as any).ethereum;
+    if (!ethereum || !address) throw new Error("Wallet not found");
+    
+    const data = encodeFunctionData({
+      abi: CONTRACT_ABI,
+      functionName,
+      args,
+    });
+
+    const tx = await ethereum.request({
+      method: "eth_sendTransaction",
+      params: [{
+        from: address,
+        to: CONTRACT_ADDRESS,
+        data: data,
+        gas: "0x1312D00", 
+      }],
+    });
+    return tx;
+  };
+
   const handlePostJob = async () => {
     if (!jobDesc) return alert("Fill job description");
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "post_job",
-        args: [jobDesc],
-        gas: BigInt(20000000),
-        gasPrice: BigInt(1000000000),
-        type: 'legacy',
-      });
+      const tx = await sendRawTransaction("post_job", [jobDesc]);
       setTxHash(tx);
       setJobDesc("");
       setTimeout(() => refetch(), 5000);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsPending(false);
     }
   };
 
@@ -56,39 +74,29 @@ export default function Home() {
     const url = inputUrls[jobId];
     if (!url) return alert("Paste URL first");
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "submit_work",
-        args: [jobId, url],
-        gas: BigInt(20000000),
-        gasPrice: BigInt(1000000000),
-        type: 'legacy',
-      });
+      const tx = await sendRawTransaction("submit_work", [jobId, url]);
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsPending(false);
     }
   };
 
   const handleApproveWork = async (jobId: string) => {
     try {
+      setIsPending(true);
       setTxHash("");
-      const tx = await writeContractAsync({
-        address: CONTRACT_ADDRESS,
-        abi: CONTRACT_ABI,
-        functionName: "approve_work",
-        args: [jobId],
-        gas: BigInt(20000000),
-        gasPrice: BigInt(1000000000),
-        type: 'legacy',
-      });
+      const tx = await sendRawTransaction("approve_work", [jobId]);
       setTxHash(tx);
       setTimeout(() => refetch(), 5000);
     } catch (error) {
       console.error(error);
+    } finally {
+      setIsPending(false);
     }
   };
 
