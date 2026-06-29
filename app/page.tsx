@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useReadContract } from "wagmi";
-import { CONTRACT_ADDRESS, CONTRACT_ABI } from "./constants";
+import { useAccount } from "wagmi";
+import { CONTRACT_ADDRESS } from "./constants";
 
 // GenLayer SDK Imports
 import { createClient } from "genlayer-js";
@@ -18,6 +18,11 @@ const BRADBURY_NETWORK = {
   blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
 };
 
+// 🟢 GenLayer Client for Reading Data Perfectly
+const genlayerClient = createClient({
+  chain: testnetBradbury,
+});
+
 export default function Home() {
   const { address, isConnected } = useAccount();
   const [isPending, setIsPending] = useState(false);
@@ -27,24 +32,31 @@ export default function Home() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [inputUrls, setInputUrls] = useState<Record<string, string>>({});
 
-  const { data: jobsData, refetch } = useReadContract({
-    address: CONTRACT_ADDRESS,
-    abi: CONTRACT_ABI,
-    functionName: "get_all_jobs",
-  });
+  // 🟢 Fetch Data directly using GenLayer SDK
+  const fetchJobs = useCallback(async () => {
+    try {
+      const data = await genlayerClient.readContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: "get_all_jobs",
+        args: [],
+      });
 
-  useEffect(() => {
-    if (jobsData) {
-      try {
-        const parsedJobs = JSON.parse(jobsData as string);
-        setJobs(parsedJobs);
-      } catch (e) {
-        console.error("Error parsing jobs:", e);
+      if (data) {
+        // GenVM returns JSON string, parsing it to array
+        const parsedJobs = typeof data === "string" ? JSON.parse(data) : data;
+        setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
       }
+    } catch (error) {
+      console.error("Error fetching jobs:", error);
     }
-  }, [jobsData]);
+  }, []);
 
-  // Switch network manually - works on both MetaMask and Rabby without Snaps
+  // Fetch jobs on page load
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
+
+  // Switch network manually
   const switchToGenLayerNetwork = async () => {
     const provider = (window as any).ethereum;
     if (!provider) throw new Error("No crypto wallet found");
@@ -56,7 +68,6 @@ export default function Home() {
       });
     } catch (error: any) {
       if (error.code === 4902) {
-        // Add network if it doesn't exist in the wallet
         await provider.request({
           method: "wallet_addEthereumChain",
           params: [BRADBURY_NETWORK],
@@ -71,18 +82,13 @@ export default function Home() {
   const sendGenLayerTransaction = async (functionName: string, args: any[]) => {
     if (!address) throw new Error("Wallet not connected");
 
-    // Step 1: Switch network manually
     await switchToGenLayerNetwork();
 
-    // Step 2: Create Client
     const client = createClient({
       chain: testnetBradbury,
       account: address as `0x${string}`,
     });
 
-    // Note: client.connect() is intentionally removed to avoid triggering the Snap requirement
-
-    // Step 3: Send Transaction
     const hash = await client.writeContract({
       address: CONTRACT_ADDRESS as `0x${string}`,
       functionName: functionName,
@@ -101,7 +107,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("post_job", [jobDesc]);
       setTxHash(tx);
       setJobDesc("");
-      setTimeout(() => refetch(), 5000);
+      setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error("Transaction Error:", error);
       alert("Transaction failed or rejected by user. Check console.");
@@ -118,7 +124,7 @@ export default function Home() {
       setTxHash("");
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url]);
       setTxHash(tx);
-      setTimeout(() => refetch(), 5000);
+      setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -132,7 +138,7 @@ export default function Home() {
       setTxHash("");
       const tx = await sendGenLayerTransaction("approve_work", [jobId]);
       setTxHash(tx);
-      setTimeout(() => refetch(), 5000);
+      setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -179,7 +185,7 @@ export default function Home() {
 
             <div className="mb-6 flex justify-between items-center">
               <h2 className="text-3xl font-bold">Live Job Board</h2>
-              <button onClick={() => refetch()} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition">
+              <button onClick={() => fetchJobs()} className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg font-semibold hover:bg-gray-300 transition">
                 Refresh Jobs
               </button>
             </div>
