@@ -8,7 +8,15 @@ import { CONTRACT_ADDRESS, CONTRACT_ABI } from "./constants";
 // GenLayer SDK Imports
 import { createClient } from "genlayer-js";
 import { testnetBradbury } from "genlayer-js/chains";
-import { TransactionStatus } from "genlayer-js/types";
+
+// Bradbury official info (For manual network addition without Snap)
+const BRADBURY_NETWORK = {
+  chainId: "0x107D", // 4221 in hex
+  chainName: "GenLayer Testnet Bradbury",
+  nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
+  rpcUrls: ["https://rpc-bradbury.genlayer.com"],
+  blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
+};
 
 export default function Home() {
   const { address, isConnected } = useAccount();
@@ -36,20 +44,45 @@ export default function Home() {
     }
   }, [jobsData]);
 
-  // GenLayer SDK Transaction Function
+  // Switch network manually - works on both MetaMask and Rabby without Snaps
+  const switchToGenLayerNetwork = async () => {
+    const provider = (window as any).ethereum;
+    if (!provider) throw new Error("No crypto wallet found");
+    
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: BRADBURY_NETWORK.chainId }],
+      });
+    } catch (error: any) {
+      if (error.code === 4902) {
+        // Add network if it doesn't exist in the wallet
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [BRADBURY_NETWORK],
+        });
+      } else {
+        throw error;
+      }
+    }
+  };
+
+  // GenLayer SDK Transaction Function (Without Snap)
   const sendGenLayerTransaction = async (functionName: string, args: any[]) => {
     if (!address) throw new Error("Wallet not connected");
 
-    // Create client with wallet address
+    // Step 1: Switch network manually
+    await switchToGenLayerNetwork();
+
+    // Step 2: Create Client
     const client = createClient({
       chain: testnetBradbury,
       account: address as `0x${string}`,
     });
 
-    // Switch the wallet to the correct network
-    await client.connect("testnetBradbury");
+    // Note: client.connect() is intentionally removed to avoid triggering the Snap requirement
 
-    // Send transaction
+    // Step 3: Send Transaction
     const hash = await client.writeContract({
       address: CONTRACT_ADDRESS as `0x${string}`,
       functionName: functionName,
