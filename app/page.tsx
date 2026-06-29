@@ -27,14 +27,21 @@ export default function Home() {
   const [isPending, setIsPending] = useState(false);
   
   // UI States
-  const [activeTab, setActiveTab] = useState("board");
+  const [activeTab, setActiveTab] = useState("post"); // Default Dashboard
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [toast, setToast] = useState<{message: string, tx: string} | null>(null);
 
   // Data States
   const [jobDesc, setJobDesc] = useState("");
   const [jobs, setJobs] = useState<any[]>([]);
   const [inputUrls, setInputUrls] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<{hash: string, action: string, time: string}[]>([]);
+
+  // Modern Toast Notification Function
+  const showToast = (message: string, tx: string) => {
+    setToast({ message, tx });
+    setTimeout(() => setToast(null), 4000); // 4 seconds auto hide
+  };
 
   // Load History
   useEffect(() => {
@@ -117,8 +124,8 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("post_job", [jobDesc]);
       saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}...`);
       setJobDesc("");
+      showToast("Job Posted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-      setActiveTab("history"); // Redirect to history to show success quietly
     } catch (error) {
       console.error(error);
       alert("Transaction failed.");
@@ -134,8 +141,8 @@ export default function Home() {
       setIsPending(true);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url]);
       saveToHistory(tx, `Submitted Work for Job #${jobId}`);
+      showToast("Work Submitted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-      setActiveTab("history");
     } catch (error) {
       console.error(error);
     } finally {
@@ -148,8 +155,8 @@ export default function Home() {
       setIsPending(true);
       const tx = await sendGenLayerTransaction("approve_work", [jobId]);
       saveToHistory(tx, `Approved Work for Job #${jobId}`);
+      showToast("Work Approved Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-      setActiveTab("history");
     } catch (error) {
       console.error(error);
     } finally {
@@ -165,13 +172,20 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#020817] text-slate-200 font-sans selection:bg-blue-500/30">
       
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 flex items-center gap-4 border border-green-500/50">
+          <span className="font-medium">{toast.message}</span>
+          <a href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold">View</a>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <nav className="border-b border-slate-800/60 bg-[#020817]/90 backdrop-blur-md sticky top-0 z-40 transition-all duration-300">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           
           {/* Logo Section */}
-          <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("board")}>
-            {/* New Authentic Genwork Logo SVG based on Image 2 */}
+          <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("post")}>
             <svg viewBox="0 0 100 100" className="w-10 h-10 text-white fill-current transform transition-transform duration-300 hover:scale-105">
               <path d="M50 15 L25 70 L45 58 L50 65 L55 58 L75 70 Z" fill="currentColor"/>
               <polygon points="50,69 62,81 50,93 38,81" fill="currentColor"/>
@@ -233,6 +247,29 @@ export default function Home() {
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             
+            {/* TAB: DASHBOARD (Post Job) */}
+            {activeTab === "post" && (
+              <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
+                <h2 className="text-3xl font-extrabold text-white mb-8">Dashboard</h2>
+                <div className="space-y-6">
+                  <textarea 
+                    className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500" 
+                    rows={5} 
+                    value={jobDesc} 
+                    onChange={(e) => setJobDesc(e.target.value)} 
+                    placeholder="Describe what needs to be done..."
+                  ></textarea>
+                  <button 
+                    onClick={handlePostJob} 
+                    disabled={isPending} 
+                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300"
+                  >
+                    {isPending ? "Processing Transaction..." : "Post Job to GenLayer"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* TAB: JOB BOARD (Live Jobs) */}
             {activeTab === "board" && (
               <div>
@@ -281,29 +318,6 @@ export default function Home() {
                       </div>
                     ))
                   )}
-                </div>
-              </div>
-            )}
-
-            {/* TAB: POST JOB (Dashboard) */}
-            {activeTab === "post" && (
-              <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
-                <h2 className="text-3xl font-extrabold text-white mb-8">Create a New Job</h2>
-                <div className="space-y-6">
-                  <textarea 
-                    className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500" 
-                    rows={5} 
-                    value={jobDesc} 
-                    onChange={(e) => setJobDesc(e.target.value)} 
-                    placeholder="Describe what needs to be done..."
-                  ></textarea>
-                  <button 
-                    onClick={handlePostJob} 
-                    disabled={isPending} 
-                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300"
-                  >
-                    {isPending ? "Processing Transaction..." : "Post Job to GenLayer"}
-                  </button>
                 </div>
               </div>
             )}
