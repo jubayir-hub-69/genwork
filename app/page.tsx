@@ -118,6 +118,7 @@ export default function Home() {
       saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}...`);
       setJobDesc("");
       setTimeout(() => fetchJobs(), 5000);
+      setActiveTab("history"); // Redirect to history to show success quietly
     } catch (error) {
       console.error(error);
       alert("Transaction failed.");
@@ -134,6 +135,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url]);
       saveToHistory(tx, `Submitted Work for Job #${jobId}`);
       setTimeout(() => fetchJobs(), 5000);
+      setActiveTab("history");
     } catch (error) {
       console.error(error);
     } finally {
@@ -147,6 +149,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("approve_work", [jobId]);
       saveToHistory(tx, `Approved Work for Job #${jobId}`);
       setTimeout(() => fetchJobs(), 5000);
+      setActiveTab("history");
     } catch (error) {
       console.error(error);
     } finally {
@@ -168,10 +171,10 @@ export default function Home() {
           
           {/* Logo Section */}
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("board")}>
-            {/* Authentic GenLayer Logo SVG */}
-            <svg viewBox="0 0 100 100" className="w-10 h-10 text-white fill-current transform transition-transform duration-300 hover:scale-110">
-              <path d="M50 0L45 40L20 85L50 65L80 85L55 40Z" fill="currentColor"/>
-              <path d="M50 75L35 85L50 100L65 85Z" fill="currentColor"/>
+            {/* New Authentic Genwork Logo SVG based on Image 2 */}
+            <svg viewBox="0 0 100 100" className="w-10 h-10 text-white fill-current transform transition-transform duration-300 hover:scale-105">
+              <path d="M50 15 L25 70 L45 58 L50 65 L55 58 L75 70 Z" fill="currentColor"/>
+              <polygon points="50,69 62,81 50,93 38,81" fill="currentColor"/>
             </svg>
             <h1 className="text-2xl font-extrabold tracking-wide text-white">Genwork</h1>
           </div>
@@ -208,8 +211,8 @@ export default function Home() {
           </div>
           
           <div className="flex flex-col gap-3">
-            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Dashboard</button>
-            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Post a Job</button>
+            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Dashboard</button>
+            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Job Board</button>
             <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "history" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>History</button>
           </div>
 
@@ -230,7 +233,7 @@ export default function Home() {
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* TAB: JOB BOARD (Dashboard) */}
+            {/* TAB: JOB BOARD (Live Jobs) */}
             {activeTab === "board" && (
               <div>
                 <div className="flex justify-between items-center mb-8">
@@ -282,7 +285,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* TAB: POST JOB */}
+            {/* TAB: POST JOB (Dashboard) */}
             {activeTab === "post" && (
               <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
                 <h2 className="text-3xl font-extrabold text-white mb-8">Create a New Job</h2>
