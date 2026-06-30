@@ -20,7 +20,9 @@ const genlayerClient = createClient({ chain: testnetBradbury });
 
 export default function Home() {
   const { address, isConnected } = useAccount();
-  const [isPending, setIsPending] = useState(false);
+  
+  // নতুন লোডিং স্টেট: এখন নির্দিষ্ট জবের বাটন ট্র্যাক করবে
+  const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState("post");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -113,8 +115,7 @@ export default function Home() {
     if (!jobDesc) return alert("Fill job description");
     if (!address) return alert("Connect wallet first");
     try {
-      setIsPending(true);
-      // এখানে ডেটা সঠিকভাবে ব্লকচেইনে পাঠানো হচ্ছে (desc এবং client আলাদাভাবে)
+      setLoadingAction("post");
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, address]);
       
       saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}...`);
@@ -125,7 +126,7 @@ export default function Home() {
       console.error(error);
       alert("Transaction failed.");
     } finally {
-      setIsPending(false);
+      setLoadingAction(null);
     }
   };
 
@@ -134,8 +135,7 @@ export default function Home() {
     if (!url) return alert("Paste URL first");
     if (!address) return alert("Connect wallet first");
     try {
-      setIsPending(true);
-      // এখানেও ডেটা সঠিকভাবে পাঠানো হচ্ছে
+      setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
       
       saveToHistory(tx, `Submitted Work for Job #${jobId}`);
@@ -144,14 +144,14 @@ export default function Home() {
     } catch (error) {
       console.error(error);
     } finally {
-      setIsPending(false);
+      setLoadingAction(null);
     }
   };
 
   const handleApproveWork = async (jobId: string) => {
     if (!address) return alert("Connect wallet first");
     try {
-      setIsPending(true);
+      setLoadingAction(`approve-${jobId}`);
       const tx = await sendGenLayerTransaction("approve_work", [jobId, address]);
       
       saveToHistory(tx, `Approved Work for Job #${jobId}`);
@@ -160,7 +160,7 @@ export default function Home() {
     } catch (error) {
       console.error(error);
     } finally {
-      setIsPending(false);
+      setLoadingAction(null);
     }
   };
 
@@ -262,10 +262,10 @@ export default function Home() {
                   ></textarea>
                   <button
                     onClick={handlePostJob}
-                    disabled={isPending}
-                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300"
+                    disabled={loadingAction !== null}
+                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isPending ? "Processing Transaction..." : "Post Job to GenLayer"}
+                    {loadingAction === "post" ? "Processing Transaction..." : "Post Job to GenLayer"}
                   </button>
                 </div>
               </div>
@@ -336,20 +336,20 @@ export default function Home() {
                               />
                               <button
                                 onClick={() => handleSubmitWork(job.id)}
-                                disabled={isPending}
-                                className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg"
+                                disabled={loadingAction !== null}
+                                className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                               >
-                                {isPending ? "Processing..." : "Submit Work"}
+                                {loadingAction === `submit-${job.id}` ? "Processing..." : "Submit Work"}
                               </button>
                             </>
                           )}
                           {job.status === "SUBMITTED" && (
                             <button
                               onClick={() => handleApproveWork(job.id)}
-                              disabled={isPending}
-                              className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg"
+                              disabled={loadingAction !== null}
+                              className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {isPending ? "Approving..." : "Approve & Pay"}
+                              {loadingAction === `approve-${job.id}` ? "Approving..." : "Approve & Pay"}
                             </button>
                           )}
                           {job.status === "COMPLETED" && (
