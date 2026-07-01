@@ -18,10 +18,15 @@ const BRADBURY_NETWORK = {
 
 const genlayerClient = createClient({ chain: testnetBradbury });
 
+const toWeiHex = (eth: string) => {
+  const [whole, fraction = ""] = eth.split(".");
+  const paddedFraction = fraction.padEnd(18, "0").slice(0, 18);
+  const weiString = whole + paddedFraction;
+  return "0x" + BigInt(weiString).toString(16);
+};
+
 export default function Home() {
   const { address, isConnected } = useAccount();
-  
-  // নতুন লোডিং স্টেট: এখন নির্দিষ্ট জবের বাটন ট্র্যাক করবে
   const [loadingAction, setLoadingAction] = useState<string | null>(null);
 
   const [activeTab, setActiveTab] = useState("post");
@@ -29,6 +34,7 @@ export default function Home() {
   const [toast, setToast] = useState<{ message: string; tx: string } | null>(null);
 
   const [jobDesc, setJobDesc] = useState("");
+  const [jobPrice, setJobPrice] = useState("");
   const [jobs, setJobs] = useState<any[]>([]);
   const [inputUrls, setInputUrls] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
@@ -112,14 +118,17 @@ export default function Home() {
   };
 
   const handlePostJob = async () => {
-    if (!jobDesc) return alert("Fill job description");
+    if (!jobDesc || !jobPrice) return alert("Fill all fields");
+    if (isNaN(Number(jobPrice)) || Number(jobPrice) <= 0) return alert("Enter valid price");
     if (!address) return alert("Connect wallet first");
+    
     try {
       setLoadingAction("post");
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, address]);
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobPrice.toString(), address]);
       
-      saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}...`);
+      saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}... for ${jobPrice} GEN`);
       setJobDesc("");
+      setJobPrice("");
       showToast("Job Posted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
@@ -148,17 +157,36 @@ export default function Home() {
     }
   };
 
-  const handleApproveWork = async (jobId: string) => {
+  const handleApproveWork = async (job: any) => {
     if (!address) return alert("Connect wallet first");
     try {
-      setLoadingAction(`approve-${jobId}`);
-      const tx = await sendGenLayerTransaction("approve_work", [jobId, address]);
+      setLoadingAction(`approve-${job.id}`);
+      const provider = (window as any).ethereum;
+      await switchToGenLayerNetwork();
+
+      showToast("Step 1: Sending GEN tokens to freelancer...", "");
       
-      saveToHistory(tx, `Approved Work for Job #${jobId}`);
-      showToast("Work Approved & Payment Released!", tx);
+      const hexValue = toWeiHex(job.price);
+      const paymentTx = await provider.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: address,
+          to: job.freelancer,
+          value: hexValue,
+        }],
+      });
+
+      saveToHistory(paymentTx, `Paid ${job.price} GEN to Freelancer`);
+      showToast("Step 2: Confirming Job Completion...", paymentTx);
+
+      const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
+      
+      saveToHistory(tx, `Approved Work for Job #${job.id}`);
+      showToast("Job Completed & Payment Delivered!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
+      alert("Payment or Approval failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -181,14 +209,16 @@ export default function Home() {
       {toast && (
         <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 flex items-center gap-4 border border-green-500/50">
           <span className="font-medium">{toast.message}</span>
-          <a
-            href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`}
-            target="_blank"
-            rel="noreferrer"
-            className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold"
-          >
-            View
-          </a>
+          {toast.tx && (
+            <a
+              href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`}
+              target="_blank"
+              rel="noreferrer"
+              className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold"
+            >
+              View Tx
+            </a>
+          )}
         </div>
       )}
 
@@ -251,15 +281,28 @@ export default function Home() {
 
             {activeTab === "post" && (
               <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
-                <h2 className="text-3xl font-extrabold text-white mb-8">Dashboard</h2>
+                <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
                 <div className="space-y-6">
                   <textarea
                     className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500"
-                    rows={5}
+                    rows={4}
                     value={jobDesc}
                     onChange={(e) => setJobDesc(e.target.value)}
                     placeholder="Describe what needs to be done..."
                   ></textarea>
+                  
+                  <div className="flex items-center bg-[#060c18] border border-slate-700 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors">
+                    <span className="px-5 text-slate-400 font-bold bg-slate-800/50 border-r border-slate-700 py-4">Price (GEN)</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      className="w-full p-4 bg-transparent text-white focus:outline-none"
+                      value={jobPrice}
+                      onChange={(e) => setJobPrice(e.target.value)}
+                      placeholder="e.g. 5.5"
+                    />
+                  </div>
+
                   <button
                     onClick={handlePostJob}
                     disabled={loadingAction !== null}
@@ -290,6 +333,9 @@ export default function Home() {
                           <div className="flex flex-wrap items-center gap-2 mb-3">
                             <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">
                               Job #{job.id}
+                            </span>
+                            <span className="bg-purple-900/40 text-purple-300 text-xs font-bold px-3 py-1 rounded-full border border-purple-800/50">
+                              💰 {job.price} GEN
                             </span>
                             {isMyJob(job) && (
                               <span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">
@@ -345,16 +391,17 @@ export default function Home() {
                           )}
                           {job.status === "SUBMITTED" && (
                             <button
-                              onClick={() => handleApproveWork(job.id)}
+                              onClick={() => handleApproveWork(job)}
                               disabled={loadingAction !== null}
                               className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                             >
-                              {loadingAction === `approve-${job.id}` ? "Approving..." : "Approve & Pay"}
+                              {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Pay ${job.price} GEN & Approve`}
                             </button>
                           )}
                           {job.status === "COMPLETED" && (
-                            <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 shadow-inner">
-                              Payment Released ✓
+                            <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 shadow-inner flex flex-col">
+                              <span>Payment Delivered ✓</span>
+                              <span className="text-xs mt-1 text-green-500">{job.price} GEN Sent</span>
                             </div>
                           )}
                         </div>
