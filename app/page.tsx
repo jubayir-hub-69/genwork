@@ -38,16 +38,21 @@ export default function Home() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [inputUrls, setInputUrls] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
+  
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
+  const [pendingTxs, setPendingTxs] = useState<Record<string, string>>({});
 
   const showToast = (message: string, tx: string) => {
     setToast({ message, tx });
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 5000);
   };
 
   useEffect(() => {
-    const saved = localStorage.getItem("genwork_tx_history");
-    if (saved) setHistory(JSON.parse(saved));
+    const savedHistory = localStorage.getItem("genwork_tx_history");
+    if (savedHistory) setHistory(JSON.parse(savedHistory));
+
+    const savedPending = localStorage.getItem("genwork_pending_txs");
+    if (savedPending) setPendingTxs(JSON.parse(savedPending));
   }, []);
 
   const saveToHistory = (hash: string, action: string) => {
@@ -57,9 +62,18 @@ export default function Home() {
     localStorage.setItem("genwork_tx_history", JSON.stringify(updatedHistory));
   };
 
-  const clearHistory = () => {
+  const addPendingTx = (jobId: string, actionType: string) => {
+    const updated = { ...pendingTxs, [jobId]: actionType };
+    setPendingTxs(updated);
+    localStorage.setItem("genwork_pending_txs", JSON.stringify(updated));
+  };
+
+  const clearHistoryAndLocks = () => {
     setHistory([]);
+    setPendingTxs({});
     localStorage.removeItem("genwork_tx_history");
+    localStorage.removeItem("genwork_pending_txs");
+    showToast("History and pending locks cleared!", "");
   };
 
   const fetchJobs = useCallback(async () => {
@@ -71,7 +85,31 @@ export default function Home() {
       });
       if (data) {
         const parsedJobs = typeof data === "string" ? JSON.parse(data) : data;
-        setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
+        const jobsArray = Array.isArray(parsedJobs) ? parsedJobs : [];
+        setJobs(jobsArray);
+
+        const currentPending = JSON.parse(localStorage.getItem("genwork_pending_txs") || "{}");
+        let hasChanges = false;
+
+        jobsArray.forEach((job: any) => {
+          const action = currentPending[job.id];
+          if (action) {
+            if (action === "approve" && job.status === "COMPLETED") {
+              delete currentPending[job.id]; hasChanges = true;
+            } else if (action === "submit" && ["SUBMITTED", "AI_APPROVED", "AI_REJECTED"].includes(job.status)) {
+              delete currentPending[job.id]; hasChanges = true;
+            } else if (action === "reject" && job.status === "OPEN") {
+              delete currentPending[job.id]; hasChanges = true;
+            } else if (action === "appeal" && job.status === "APPEALED") {
+              delete currentPending[job.id]; hasChanges = true;
+            }
+          }
+        });
+
+        if (hasChanges) {
+          setPendingTxs(currentPending);
+          localStorage.setItem("genwork_pending_txs", JSON.stringify(currentPending));
+        }
       }
     } catch (error) {
       console.error("Error fetching jobs:", error);
@@ -128,7 +166,7 @@ export default function Home() {
       saveToHistory(tx, `Posted Job for ${jobPrice} GEN`);
       setJobDesc("");
       setJobPrice("");
-      showToast("Job Posted Successfully!", tx);
+      showToast("Job Posted! Waiting for confirmation...", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
@@ -147,7 +185,8 @@ export default function Home() {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
       saveToHistory(tx, `Submitted Work for AI Eval`);
-      showToast("Work Submitted to AI Evaluator!", tx);
+      addPendingTx(jobId, "submit");
+      showToast("Work Submitted! Transaction processing...", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
@@ -165,7 +204,7 @@ export default function Home() {
       const provider = (window as any).ethereum;
       await switchToGenLayerNetwork();
 
-      showToast("Waiting for Wallet Approval...", "");
+      showToast("Approve the payment in your wallet...", "");
       const hexValue = toWeiHex(job.price);
       
       const paymentTx = await provider.request({
@@ -174,14 +213,17 @@ export default function Home() {
       });
 
       saveToHistory(paymentTx, `Paid ${job.price} GEN`);
-      showToast("Payment Sent! Confirming Job...", paymentTx);
+      showToast("Payment sent! Confirming on GenLayer...", paymentTx);
 
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
       saveToHistory(tx, `Approved Job #${job.id}`);
-      showToast("Job Completely Finished!", tx);
+      addPendingTx(job.id, "approve");
+      
+      showToast("Transaction sent to blockchain!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
+      alert("Payment was cancelled or failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -195,7 +237,8 @@ export default function Home() {
       setLoadingAction(`reject-${jobId}`);
       const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
       saveToHistory(tx, `Rejected Job #${jobId}`);
-      showToast("Job Rejected and Re-opened!", tx);
+      addPendingTx(jobId, "reject");
+      showToast("Reject transaction processing...", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
@@ -214,7 +257,8 @@ export default function Home() {
       setLoadingAction(`appeal-${jobId}`);
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
-      showToast("Appeal Submitted Successfully!", tx);
+      addPendingTx(jobId, "appeal");
+      showToast("Appeal transaction processing...", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
@@ -304,7 +348,7 @@ export default function Home() {
                     <span className="px-5 text-slate-400 font-bold bg-slate-800/50 border-r border-slate-700 py-4">Price (GEN)</span>
                     <input type="number" step="0.01" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={(e) => setJobPrice(e.target.value)} placeholder="e.g. 5.5" />
                   </div>
-                  <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${loadingAction === "post" ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500"}`}>
+                  <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${loadingAction === "post" ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.3)]"}`}>
                     {loadingAction === "post" ? "Processing..." : "Post Job to GenLayer"}
                   </button>
                 </div>
@@ -321,93 +365,102 @@ export default function Home() {
                   {jobs.length === 0 ? (
                     <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 text-slate-400">No jobs available right now.</div>
                   ) : (
-                    jobs.map((job) => (
-                      <div key={job.id} className="bg-[#0B1426] p-6 rounded-3xl border border-slate-800/80 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center hover:border-slate-600 transition-all">
-                        <div className="mb-4 md:mb-0 flex-1 pr-4">
-                          <div className="flex flex-wrap items-center gap-2 mb-3">
-                            <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">Job #{job.id}</span>
-                            <span className="bg-purple-900/40 text-purple-300 text-xs font-bold px-3 py-1 rounded-full border border-purple-800/50">💰 {job.price} GEN</span>
-                            {isMyJob(job) && (<span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">🔒 Your Job</span>)}
+                    jobs.map((job) => {
+                      const isLocked = pendingTxs[job.id] !== undefined;
+
+                      return (
+                        <div key={job.id} className={`bg-[#0B1426] p-6 rounded-3xl border ${isLocked ? 'border-blue-800/80' : 'border-slate-800/80'} shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center hover:border-slate-600 transition-all`}>
+                          <div className="mb-4 md:mb-0 flex-1 pr-4">
+                            <div className="flex flex-wrap items-center gap-2 mb-3">
+                              <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">Job #{job.id}</span>
+                              <span className="bg-purple-900/40 text-purple-300 text-xs font-bold px-3 py-1 rounded-full border border-purple-800/50">💰 {job.price} GEN</span>
+                              {isMyJob(job) && (<span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">🔒 Your Job</span>)}
+                            </div>
+                            <h3 className="text-xl font-bold text-white mb-2">{job.desc}</h3>
+                            
+                            <p className="text-sm text-slate-400 flex items-center gap-2">
+                              Status: <span className={`font-bold ${job.status === "COMPLETED" ? "text-green-400" : job.status === "AI_APPROVED" ? "text-green-300" : job.status === "AI_REJECTED" ? "text-red-400" : "text-amber-400"}`}>{job.status}</span>
+                            </p>
+                            
+                            {(job.status !== "OPEN" && job.ai_decision) && (
+                              <div className="mt-2 p-2 bg-[#060c18] rounded-lg border border-slate-800/60 inline-block">
+                                <p className="text-xs text-slate-300">🤖 {job.ai_decision}</p>
+                              </div>
+                            )}
+
+                            {job.client && (<p className="text-xs text-slate-500 mt-3">Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span></p>)}
+                            {job.freelancer && (<p className="text-xs text-slate-500 mt-1">Freelancer: <span className="font-mono text-slate-400">{shortAddr(job.freelancer)}</span></p>)}
+                            {job.url && (<p className="text-sm text-slate-400 mt-2">Work Link: <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{job.url}</a></p>)}
                           </div>
-                          <h3 className="text-xl font-bold text-white mb-2">{job.desc}</h3>
-                          
-                          <p className="text-sm text-slate-400 flex items-center gap-2">
-                            Status: <span className={`font-bold ${job.status === "COMPLETED" ? "text-green-400" : job.status === "AI_APPROVED" ? "text-green-300" : job.status === "AI_REJECTED" ? "text-red-400" : "text-amber-400"}`}>{job.status}</span>
-                          </p>
-                          
-                          {(job.status !== "OPEN" && job.ai_decision) && (
-                            <div className="mt-2 p-2 bg-[#060c18] rounded-lg border border-slate-800/60 inline-block">
-                              <p className="text-xs text-slate-300">🤖 {job.ai_decision}</p>
-                            </div>
-                          )}
 
-                          {job.client && (<p className="text-xs text-slate-500 mt-3">Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span></p>)}
-                          {job.freelancer && (<p className="text-xs text-slate-500 mt-1">Freelancer: <span className="font-mono text-slate-400">{shortAddr(job.freelancer)}</span></p>)}
-                          {job.url && (<p className="text-sm text-slate-400 mt-2">Work Link: <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{job.url}</a></p>)}
-                        </div>
-
-                        <div className="w-full md:w-auto flex flex-col gap-3 min-w-[260px]">
-                          
-                          {job.status === "OPEN" && (
-                            isMyJob(job) ? (
-                              <div className="bg-blue-900/20 text-blue-400 py-3 rounded-xl font-bold text-center border border-blue-800/50">
-                                Waiting for Work...
+                          <div className="w-full md:w-auto flex flex-col gap-3 min-w-[260px]">
+                            {isLocked ? (
+                              <div className="bg-slate-800/80 text-blue-400 py-4 px-2 rounded-xl font-bold text-center border border-slate-700 flex flex-col animate-pulse shadow-lg">
+                                <span>Processing... ⏳</span>
+                                <span className="text-xs mt-1 text-slate-400 font-normal">Waiting for network confirmation</span>
                               </div>
                             ) : (
                               <>
-                                <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
-                                <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'submit-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-900 hover:bg-white'}`}>
-                                  {loadingAction === `submit-${job.id}` ? "AI is Evaluating..." : "Submit to AI"}
-                                </button>
+                                {job.status === "OPEN" && (
+                                  isMyJob(job) ? (
+                                    <div className="bg-blue-900/20 text-blue-400 py-3 rounded-xl font-bold text-center border border-blue-800/50">Waiting for Work...</div>
+                                  ) : (
+                                    <>
+                                      <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                                      <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'submit-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-900 hover:bg-white'}`}>
+                                        {loadingAction === `submit-${job.id}` ? "Sending..." : "Submit to AI"}
+                                      </button>
+                                    </>
+                                  )
+                                )}
+
+                                {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
+                                  isMyJob(job) ? (
+                                    <div className="flex flex-col gap-2">
+                                      <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'approve-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}>
+                                        {loadingAction === `approve-${job.id}` ? "Processing Payment..." : `Approve & Pay ${job.price} GEN`}
+                                      </button>
+                                      <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold border transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-red-600/20 text-red-400 border-red-800/50 hover:bg-red-600 hover:text-white'}`}>
+                                        {loadingAction === `reject-${job.id}` ? "Rejecting..." : "Reject Work"}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <div className="bg-amber-900/20 text-amber-400 py-3 px-2 rounded-xl font-bold text-center border border-amber-800/50 flex flex-col">
+                                      <span>Work Submitted 🚀</span>
+                                      <span className="text-xs mt-1">Waiting for {job.price} GEN Payment</span>
+                                    </div>
+                                  )
+                                )}
+
+                                {job.status === "AI_REJECTED" && (
+                                  isMyJob(job) ? (
+                                    <div className="flex flex-col gap-2">
+                                      <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
+                                        {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Reject & Re-open"}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <input type="text" placeholder="Reason for appeal..." className="p-3 bg-[#060c18] border border-red-900/50 rounded-xl text-white focus:outline-none focus:border-red-500" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                                      <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'appeal-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
+                                        {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal"}
+                                      </button>
+                                    </>
+                                  )
+                                )}
+
+                                {job.status === "COMPLETED" && (
+                                  <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 flex flex-col shadow-inner">
+                                    <span>Payment Delivered ✓</span>
+                                    <span className="text-xs mt-1 text-green-500">{job.price} GEN Sent</span>
+                                  </div>
+                                )}
                               </>
-                            )
-                          )}
-
-                          {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
-                            isMyJob(job) ? (
-                              <div className="flex flex-col gap-2">
-                                <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'approve-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}>
-                                  {loadingAction === `approve-${job.id}` ? "Processing Payment..." : `Approve & Pay ${job.price} GEN`}
-                                </button>
-                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold border transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-red-600/20 text-red-400 border-red-800/50 hover:bg-red-600 hover:text-white'}`}>
-                                  {loadingAction === `reject-${job.id}` ? "Rejecting..." : "Reject Work"}
-                                </button>
-                              </div>
-                            ) : (
-                              <div className="bg-amber-900/20 text-amber-400 py-3 px-2 rounded-xl font-bold text-center border border-amber-800/50 flex flex-col">
-                                <span>Work Submitted 🚀</span>
-                                <span className="text-xs mt-1">Waiting for {job.price} GEN Payment</span>
-                              </div>
-                            )
-                          )}
-
-                          {job.status === "AI_REJECTED" && (
-                            isMyJob(job) ? (
-                              <div className="flex flex-col gap-2">
-                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
-                                  {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Reject & Re-open"}
-                                </button>
-                              </div>
-                            ) : (
-                              <>
-                                <input type="text" placeholder="Reason for appeal..." className="p-3 bg-[#060c18] border border-red-900/50 rounded-xl text-white focus:outline-none focus:border-red-500" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
-                                <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'appeal-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
-                                  {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal"}
-                                </button>
-                              </>
-                            )
-                          )}
-
-                          {job.status === "COMPLETED" && (
-                            <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 flex flex-col shadow-inner">
-                              <span>Payment Delivered ✓</span>
-                              <span className="text-xs mt-1 text-green-500">{job.price} GEN Sent</span>
-                            </div>
-                          )}
-
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -417,6 +470,11 @@ export default function Home() {
               <div>
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="text-3xl font-extrabold text-white">Transaction History</h2>
+                  <div className="flex gap-3">
+                    <button onClick={clearHistoryAndLocks} className="bg-red-900/30 text-red-400 px-5 py-2.5 rounded-full text-sm hover:bg-red-900/50 border border-red-800/50 transition-all hover:scale-105 active:scale-95">
+                      Clear Records & Unblock
+                    </button>
+                  </div>
                 </div>
                 <div className="bg-[#0B1426] rounded-3xl border border-slate-800/80 overflow-hidden shadow-xl">
                   {history.length === 0 ? (
