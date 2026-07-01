@@ -182,7 +182,6 @@ export default function Home() {
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
-      alert("Transaction was cancelled or failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -261,7 +260,7 @@ export default function Home() {
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden">
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
@@ -273,7 +272,7 @@ export default function Home() {
         <div className="absolute right-0 top-0 h-full w-72 bg-[#0a1122] border-l border-slate-800 shadow-2xl flex flex-col p-6">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-bold text-white">Menu</h2>
-            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-slate-800/50 rounded-full">
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-slate-800/50 rounded-full focus:outline-none">
               <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
