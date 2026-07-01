@@ -95,8 +95,6 @@ export default function Home() {
           method: "wallet_addEthereumChain",
           params: [BRADBURY_NETWORK],
         });
-      } else {
-        console.warn("Network switch warning:", error);
       }
     }
   };
@@ -126,14 +124,14 @@ export default function Home() {
       setLoadingAction("post");
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobPrice.toString(), address]);
       
-      saveToHistory(tx, `Posted Job: ${jobDesc.substring(0, 20)}... for ${jobPrice} GEN`);
+      saveToHistory(tx, `Posted Job for ${jobPrice} GEN`);
       setJobDesc("");
       setJobPrice("");
       showToast("Job Posted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      alert("Post Job Error: " + (error?.message || "Transaction failed from wallet"));
+      alert("Transaction failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -147,12 +145,11 @@ export default function Home() {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
       
-      saveToHistory(tx, `Submitted Work for Job #${jobId}`);
-      showToast("Work Submitted Successfully!", tx);
+      saveToHistory(tx, `Submitted Work (Pending AI Eval)`);
+      showToast("Work Submitted to AI!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      alert("Submit Error: " + (error?.message || "Transaction failed from wallet"));
     } finally {
       setLoadingAction(null);
     }
@@ -165,7 +162,7 @@ export default function Home() {
       const provider = (window as any).ethereum;
       await switchToGenLayerNetwork();
 
-      showToast("Step 1: Sending GEN tokens to freelancer...", "");
+      showToast("Sending GEN tokens to freelancer...", "");
       
       const hexValue = toWeiHex(job.price);
       const paymentTx = await provider.request({
@@ -177,17 +174,17 @@ export default function Home() {
         }],
       });
 
-      saveToHistory(paymentTx, `Paid ${job.price} GEN to Freelancer`);
-      showToast("Step 2: Confirming Job Completion...", paymentTx);
+      saveToHistory(paymentTx, `Paid ${job.price} GEN`);
+      showToast("Confirming on GenLayer...", paymentTx);
 
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
       
-      saveToHistory(tx, `Approved Work for Job #${job.id}`);
-      showToast("Job Completed & Payment Delivered!", tx);
+      saveToHistory(tx, `Approved Job #${job.id}`);
+      showToast("Payment Delivered!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
-      alert("Payment Error: " + (error?.message || "Transaction or Payment failed"));
+      alert("Payment failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -207,30 +204,30 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#020817] text-slate-200 font-sans selection:bg-blue-500/30">
       {toast && (
-        <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 flex items-center gap-4 border border-green-500/50">
+        <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4">
           <span className="font-medium">{toast.message}</span>
           {toast.tx && (
-            <a href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold">
-              View Tx
+            <a href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold">
+              View
             </a>
           )}
         </div>
       )}
 
-      <nav className="border-b border-slate-800/60 bg-[#020817]/90 backdrop-blur-md sticky top-0 z-40 transition-all duration-300">
+      <nav className="border-b border-slate-800/60 bg-[#020817]/90 sticky top-0 z-40">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("post")}>
-            <svg viewBox="0 0 100 100" className="w-10 h-10 text-white fill-current transform transition-transform duration-300 hover:scale-105">
-              <path d="M50 15 L25 70 L45 58 L50 65 L55 58 L75 70 Z" fill="currentColor" />
-              <polygon points="50,69 62,81 50,93 38,81" fill="currentColor" />
+            <svg viewBox="0 0 100 100" className="w-10 h-10 text-white fill-current">
+              <path d="M50 15 L25 70 L45 58 L50 65 L55 58 L75 70 Z" />
+              <polygon points="50,69 62,81 50,93 38,81" />
             </svg>
-            <h1 className="text-2xl font-extrabold tracking-wide text-white">Genwork</h1>
+            <h1 className="text-2xl font-extrabold tracking-wide text-white">TrustWork</h1>
           </div>
           <div className="flex items-center gap-4">
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none">
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 block md:hidden">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
@@ -239,17 +236,17 @@ export default function Home() {
 
       <div className={`fixed inset-0 z-50 transform transition-transform duration-300 ease-in-out ${isMenuOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}></div>
-        <div className="absolute right-0 top-0 h-full w-72 bg-[#0a1122] border-l border-slate-800 shadow-2xl flex flex-col p-6 transition-all duration-300">
+        <div className="absolute right-0 top-0 h-full w-72 bg-[#0a1122] border-l border-slate-800 shadow-2xl flex flex-col p-6">
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-bold text-white">Menu</h2>
-            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-slate-800/50 hover:bg-slate-700 rounded-full transition">
+            <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-slate-800/50 rounded-full">
               <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
           <div className="flex flex-col gap-3">
-            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Dashboard</button>
-            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Job Board</button>
-            <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold transition-all duration-300 border ${activeTab === "history" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "bg-transparent border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>History</button>
+            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white" : "border-transparent text-slate-400"}`}>Dashboard</button>
+            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white" : "border-transparent text-slate-400"}`}>Job Board</button>
+            <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "history" ? "bg-slate-800 border-slate-600 text-white" : "border-transparent text-slate-400"}`}>History</button>
           </div>
           <div className="mt-auto pt-8 border-t border-slate-800 block md:hidden">
             <ConnectButton showBalance={false} />
@@ -257,25 +254,25 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-6 md:p-8 mt-4 transition-all duration-500 ease-in-out">
+      <div className="max-w-4xl mx-auto p-6 md:p-8 mt-4">
         {!isConnected ? (
           <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 shadow-xl mt-10">
-            <h2 className="text-3xl font-bold mb-4 text-white">Welcome to Genwork</h2>
-            <p className="text-slate-400 text-lg">Connect your wallet to experience the fastest blockchain job platform.</p>
+            <h2 className="text-3xl font-bold mb-4 text-white">Welcome to TrustWork</h2>
+            <p className="text-slate-400 text-lg">AI-powered decentralized job platform.</p>
           </div>
         ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div>
             {activeTab === "post" && (
               <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
                 <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
                 <div className="space-y-6">
-                  <textarea className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
-                  <div className="flex items-center bg-[#060c18] border border-slate-700 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors">
+                  <textarea className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 resize-none" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
+                  <div className="flex items-center bg-[#060c18] border border-slate-700 rounded-2xl overflow-hidden focus-within:border-blue-500">
                     <span className="px-5 text-slate-400 font-bold bg-slate-800/50 border-r border-slate-700 py-4">Price (GEN)</span>
                     <input type="number" step="0.01" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={(e) => setJobPrice(e.target.value)} placeholder="e.g. 5.5" />
                   </div>
-                  <button onClick={handlePostJob} disabled={loadingAction !== null} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
-                    {loadingAction === "post" ? "Processing Transaction..." : "Post Job to GenLayer"}
+                  <button onClick={handlePostJob} disabled={loadingAction !== null} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-500 disabled:opacity-50">
+                    {loadingAction === "post" ? "Processing..." : "Post Job to GenLayer"}
                   </button>
                 </div>
               </div>
@@ -285,14 +282,14 @@ export default function Home() {
               <div>
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="text-3xl font-extrabold text-white">Job Board</h2>
-                  <button onClick={() => fetchJobs()} className="bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm hover:bg-slate-700 transition-all duration-300 border border-slate-700 hover:scale-105 active:scale-95 shadow-lg">↻ Refresh</button>
+                  <button onClick={() => fetchJobs()} className="bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm hover:bg-slate-700 border border-slate-700">↻ Refresh</button>
                 </div>
                 <div className="grid gap-6">
                   {jobs.length === 0 ? (
-                    <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 text-slate-400 shadow-xl">No jobs available right now.</div>
+                    <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 text-slate-400">No jobs available right now.</div>
                   ) : (
                     jobs.map((job) => (
-                      <div key={job.id} className="bg-[#0B1426] p-6 rounded-3xl border border-slate-800/80 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center hover:border-slate-600 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+                      <div key={job.id} className="bg-[#0B1426] p-6 rounded-3xl border border-slate-800/80 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center">
                         <div className="mb-4 md:mb-0 flex-1 pr-4">
                           <div className="flex flex-wrap items-center gap-2 mb-3">
                             <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">Job #{job.id}</span>
@@ -300,27 +297,54 @@ export default function Home() {
                             {isMyJob(job) && (<span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">🔒 Your Job</span>)}
                           </div>
                           <h3 className="text-xl font-bold text-white mb-2">{job.desc}</h3>
-                          <p className="text-sm text-slate-400">Status: <span className={`font-bold ml-1 ${job.status === "COMPLETED" ? "text-green-400" : job.status === "SUBMITTED" ? "text-amber-400" : "text-blue-400"}`}>{job.status}</span></p>
-                          {job.client && (<p className="text-xs text-slate-500 mt-1">Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span></p>)}
+                          
+                          {/* AI status badges */}
+                          <p className="text-sm text-slate-400 flex items-center gap-2">
+                            Status: <span className={`font-bold ${job.status === "COMPLETED" ? "text-green-400" : job.status === "AI_APPROVED" ? "text-green-300" : job.status === "AI_REJECTED" ? "text-red-400" : "text-amber-400"}`}>{job.status}</span>
+                          </p>
+                          
+                          {job.status === "AI_APPROVED" && <p className="text-xs text-green-400 mt-1 font-bold">🤖 AI Verified: Link meets requirements</p>}
+                          {job.status === "AI_REJECTED" && <p className="text-xs text-red-400 mt-1 font-bold">🤖 AI Warning: Needs manual review/Appeal</p>}
+
+                          {job.client && (<p className="text-xs text-slate-500 mt-2">Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span></p>)}
                           {job.freelancer && (<p className="text-xs text-slate-500 mt-1">Freelancer: <span className="font-mono text-slate-400">{shortAddr(job.freelancer)}</span></p>)}
-                          {job.url && (<p className="text-sm text-slate-400 mt-2">Work Link: <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition">{job.url}</a></p>)}
+                          {job.url && (<p className="text-sm text-slate-400 mt-2">Work Link: <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline">{job.url}</a></p>)}
                         </div>
+
                         <div className="w-full md:w-auto flex flex-col gap-3 min-w-[260px]">
+                          {/* ১. Job Open থাকলে: Client দেখবে Waiting, Freelancer দেখবে Submit */}
                           {job.status === "OPEN" && (
-                            <>
-                              <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-colors" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
-                              <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                                {loadingAction === `submit-${job.id}` ? "Processing..." : "Submit Work"}
+                            isMyJob(job) ? (
+                              <div className="bg-blue-900/20 text-blue-400 py-3 rounded-xl font-bold text-center border border-blue-800/50">
+                                Waiting for Work...
+                              </div>
+                            ) : (
+                              <>
+                                <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                                <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white disabled:opacity-50">
+                                  {loadingAction === `submit-${job.id}` ? "Evaluating..." : "Submit to AI"}
+                                </button>
+                              </>
+                            )
+                          )}
+
+                          {/* ২. Submit হওয়ার পর: Client দেখবে Pay, Freelancer দেখবে Waiting */}
+                          {["SUBMITTED", "AI_APPROVED", "AI_REJECTED"].includes(job.status) && (
+                            isMyJob(job) ? (
+                              <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 disabled:opacity-50 shadow-[0_0_15px_rgba(37,99,235,0.4)]">
+                                {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Pay ${job.price} GEN & Approve`}
                               </button>
-                            </>
+                            ) : (
+                              <div className="bg-amber-900/20 text-amber-400 py-3 px-2 rounded-xl font-bold text-center border border-amber-800/50 flex flex-col">
+                                <span>Work Submitted 🚀</span>
+                                <span className="text-xs mt-1">Waiting for {job.price} GEN Payment...</span>
+                              </div>
+                            )
                           )}
-                          {job.status === "SUBMITTED" && (
-                            <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
-                              {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Pay ${job.price} GEN & Approve`}
-                            </button>
-                          )}
+
+                          {/* ৩. Payment কমপ্লিট হওয়ার পর */}
                           {job.status === "COMPLETED" && (
-                            <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 shadow-inner flex flex-col">
+                            <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 flex flex-col">
                               <span>Payment Delivered ✓</span>
                               <span className="text-xs mt-1 text-green-500">{job.price} GEN Sent</span>
                             </div>
@@ -328,6 +352,33 @@ export default function Home() {
                         </div>
                       </div>
                     ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === "history" && (
+              <div>
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-3xl font-extrabold text-white">Transaction History</h2>
+                </div>
+                <div className="bg-[#0B1426] rounded-3xl border border-slate-800/80 overflow-hidden">
+                  {history.length === 0 ? (
+                    <div className="text-center p-12 text-slate-500">No transactions yet.</div>
+                  ) : (
+                    <div className="divide-y divide-slate-800/60">
+                      {history.map((record, idx) => (
+                        <div key={idx} className="p-5 flex justify-between items-center hover:bg-[#0f1b33]">
+                          <div>
+                            <h4 className="font-bold text-slate-200">{record.action}</h4>
+                            <p className="text-sm text-slate-500">{record.time}</p>
+                          </div>
+                          <a href={`https://explorer-bradbury.genlayer.com/tx/${record.hash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-white text-sm font-bold">
+                            View
+                          </a>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </div>
