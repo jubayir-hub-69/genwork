@@ -1,4 +1,4 @@
-export const CONTRACT_ADDRESS = "0x11540a2F9F2bE6B76aa01a182fFc2a41BEb74b20";
+export const CONTRACT_ADDRESS = "0x05b019A15B55AeB52d3Da0049bD76593769761Af"; 
 
 export const CONTRACT_ABI = [
   {
@@ -27,6 +27,15 @@ export const CONTRACT_ABI = [
     "inputs": [
       { "name": "job_id", "type": "string" },
       { "name": "approver", "type": "string" }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "appeal_decision",
+    "type": "function",
+    "inputs": [
+      { "name": "job_id", "type": "string" },
+      { "name": "appeal_reason", "type": "string" }
     ],
     "outputs": []
   },
