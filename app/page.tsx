@@ -117,6 +117,7 @@ export default function Home() {
   };
 
   const handlePostJob = async () => {
+    if (loadingAction) return;
     if (!jobDesc || !jobPrice) return alert("Fill all fields");
     if (isNaN(Number(jobPrice)) || Number(jobPrice) <= 0) return alert("Enter valid price");
     if (!address) return alert("Connect wallet first");
@@ -137,9 +138,11 @@ export default function Home() {
   };
 
   const handleSubmitWork = async (jobId: string) => {
+    if (loadingAction) return;
     const url = inputUrls[jobId];
     if (!url) return alert("Paste URL first");
     if (!address) return alert("Connect wallet first");
+    
     try {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
@@ -154,35 +157,41 @@ export default function Home() {
   };
 
   const handleApproveWork = async (job: any) => {
+    if (loadingAction) return;
     if (!address) return alert("Connect wallet first");
+    
     try {
       setLoadingAction(`approve-${job.id}`);
       const provider = (window as any).ethereum;
       await switchToGenLayerNetwork();
 
-      showToast("Sending GEN tokens to freelancer...", "");
+      showToast("Waiting for Wallet Approval...", "");
       const hexValue = toWeiHex(job.price);
+      
       const paymentTx = await provider.request({
         method: 'eth_sendTransaction',
         params: [{ from: address, to: job.freelancer, value: hexValue }],
       });
 
       saveToHistory(paymentTx, `Paid ${job.price} GEN`);
-      showToast("Confirming on GenLayer...", paymentTx);
+      showToast("Payment Sent! Confirming Job...", paymentTx);
 
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
       saveToHistory(tx, `Approved Job #${job.id}`);
-      showToast("Payment Delivered!", tx);
+      showToast("Job Completely Finished!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
+      alert("Transaction was cancelled or failed.");
     } finally {
       setLoadingAction(null);
     }
   };
 
   const handleRejectWork = async (jobId: string) => {
+    if (loadingAction) return;
     if (!address) return alert("Connect wallet first");
+    
     try {
       setLoadingAction(`reject-${jobId}`);
       const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
@@ -197,9 +206,11 @@ export default function Home() {
   };
 
   const handleAppeal = async (jobId: string) => {
+    if (loadingAction) return;
     const reason = appealReasons[jobId];
     if (!reason) return alert("Please enter appeal reason");
     if (!address) return alert("Connect wallet first");
+    
     try {
       setLoadingAction(`appeal-${jobId}`);
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
@@ -250,8 +261,7 @@ export default function Home() {
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            {/* মেনু বাটনটি এখন সব ডিভাইসেই দেখা যাবে */}
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none">
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
@@ -295,7 +305,7 @@ export default function Home() {
                     <span className="px-5 text-slate-400 font-bold bg-slate-800/50 border-r border-slate-700 py-4">Price (GEN)</span>
                     <input type="number" step="0.01" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={(e) => setJobPrice(e.target.value)} placeholder="e.g. 5.5" />
                   </div>
-                  <button onClick={handlePostJob} disabled={loadingAction !== null} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold hover:bg-blue-500 transition-all duration-300 disabled:opacity-50">
+                  <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 ${loadingAction === "post" ? "bg-slate-700 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500"}`}>
                     {loadingAction === "post" ? "Processing..." : "Post Job to GenLayer"}
                   </button>
                 </div>
@@ -347,7 +357,7 @@ export default function Home() {
                             ) : (
                               <>
                                 <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
-                                <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white transition-all disabled:opacity-50">
+                                <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'submit-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-900 hover:bg-white'}`}>
                                   {loadingAction === `submit-${job.id}` ? "AI is Evaluating..." : "Submit to AI"}
                                 </button>
                               </>
@@ -357,13 +367,10 @@ export default function Home() {
                           {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
                             isMyJob(job) ? (
                               <div className="flex flex-col gap-2">
-                                {job.status === "SUBMITTED" && (
-                                  <span className="text-xs text-amber-400 mb-1 text-center">⚠️ Manual Check Needed</span>
-                                )}
-                                <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50">
-                                  {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Approve & Pay ${job.price} GEN`}
+                                <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'approve-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_15px_rgba(37,99,235,0.4)]'}`}>
+                                  {loadingAction === `approve-${job.id}` ? "Processing Payment..." : `Approve & Pay ${job.price} GEN`}
                                 </button>
-                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className="bg-red-600/20 text-red-400 border border-red-800/50 py-3 rounded-xl font-bold hover:bg-red-600 hover:text-white transition-all disabled:opacity-50">
+                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold border transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-800 text-slate-500 border-slate-700 cursor-not-allowed' : 'bg-red-600/20 text-red-400 border-red-800/50 hover:bg-red-600 hover:text-white'}`}>
                                   {loadingAction === `reject-${job.id}` ? "Rejecting..." : "Reject Work"}
                                 </button>
                               </div>
@@ -378,15 +385,14 @@ export default function Home() {
                           {job.status === "AI_REJECTED" && (
                             isMyJob(job) ? (
                               <div className="flex flex-col gap-2">
-                                <span className="text-xs text-red-400 text-center">🤖 AI Rejected this work.</span>
-                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className="bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-500 transition-all disabled:opacity-50">
+                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'reject-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
                                   {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Reject & Re-open"}
                                 </button>
                               </div>
                             ) : (
                               <>
                                 <input type="text" placeholder="Reason for appeal..." className="p-3 bg-[#060c18] border border-red-900/50 rounded-xl text-white focus:outline-none focus:border-red-500" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
-                                <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className="bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-500 transition-all disabled:opacity-50">
+                                <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'appeal-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-red-600 text-white hover:bg-red-500'}`}>
                                   {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal"}
                                 </button>
                               </>
