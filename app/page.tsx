@@ -96,7 +96,7 @@ export default function Home() {
           params: [BRADBURY_NETWORK],
         });
       } else {
-        throw error;
+        console.warn("Network switch warning:", error);
       }
     }
   };
@@ -131,9 +131,9 @@ export default function Home() {
       setJobPrice("");
       showToast("Job Posted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Transaction failed.");
+      alert("Post Job Error: " + (error?.message || "Transaction failed from wallet"));
     } finally {
       setLoadingAction(null);
     }
@@ -150,8 +150,9 @@ export default function Home() {
       saveToHistory(tx, `Submitted Work for Job #${jobId}`);
       showToast("Work Submitted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert("Submit Error: " + (error?.message || "Transaction failed from wallet"));
     } finally {
       setLoadingAction(null);
     }
@@ -184,9 +185,9 @@ export default function Home() {
       saveToHistory(tx, `Approved Work for Job #${job.id}`);
       showToast("Job Completed & Payment Delivered!", tx);
       setTimeout(() => fetchJobs(), 5000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Payment or Approval failed.");
+      alert("Payment Error: " + (error?.message || "Transaction or Payment failed"));
     } finally {
       setLoadingAction(null);
     }
@@ -205,17 +206,11 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-[#020817] text-slate-200 font-sans selection:bg-blue-500/30">
-
       {toast && (
         <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl animate-in slide-in-from-right-10 flex items-center gap-4 border border-green-500/50">
           <span className="font-medium">{toast.message}</span>
           {toast.tx && (
-            <a
-              href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`}
-              target="_blank"
-              rel="noreferrer"
-              className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold"
-            >
+            <a href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg transition text-sm font-bold">
               View Tx
             </a>
           )}
@@ -235,13 +230,8 @@ export default function Home() {
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button
-              onClick={() => setIsMenuOpen(true)}
-              className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none"
-            >
-              <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-              </svg>
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none">
+              <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
         </div>
@@ -253,9 +243,7 @@ export default function Home() {
           <div className="flex justify-between items-center mb-10">
             <h2 className="text-xl font-bold text-white">Menu</h2>
             <button onClick={() => setIsMenuOpen(false)} className="p-2 bg-slate-800/50 hover:bg-slate-700 rounded-full transition">
-              <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
-              </svg>
+              <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
             </button>
           </div>
           <div className="flex flex-col gap-3">
@@ -270,7 +258,6 @@ export default function Home() {
       </div>
 
       <div className="max-w-4xl mx-auto p-6 md:p-8 mt-4 transition-all duration-500 ease-in-out">
-
         {!isConnected ? (
           <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 shadow-xl mt-10">
             <h2 className="text-3xl font-bold mb-4 text-white">Welcome to Genwork</h2>
@@ -278,36 +265,16 @@ export default function Home() {
           </div>
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-
             {activeTab === "post" && (
               <div className="bg-[#0B1426] p-8 md:p-10 rounded-3xl border border-slate-800/80 shadow-xl">
                 <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
                 <div className="space-y-6">
-                  <textarea
-                    className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500"
-                    rows={4}
-                    value={jobDesc}
-                    onChange={(e) => setJobDesc(e.target.value)}
-                    placeholder="Describe what needs to be done..."
-                  ></textarea>
-                  
+                  <textarea className="w-full p-5 bg-[#060c18] border border-slate-700 rounded-2xl text-white focus:outline-none focus:border-blue-500 transition-colors resize-none placeholder-slate-500" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
                   <div className="flex items-center bg-[#060c18] border border-slate-700 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors">
                     <span className="px-5 text-slate-400 font-bold bg-slate-800/50 border-r border-slate-700 py-4">Price (GEN)</span>
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-full p-4 bg-transparent text-white focus:outline-none"
-                      value={jobPrice}
-                      onChange={(e) => setJobPrice(e.target.value)}
-                      placeholder="e.g. 5.5"
-                    />
+                    <input type="number" step="0.01" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={(e) => setJobPrice(e.target.value)} placeholder="e.g. 5.5" />
                   </div>
-
-                  <button
-                    onClick={handlePostJob}
-                    disabled={loadingAction !== null}
-                    className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
+                  <button onClick={handlePostJob} disabled={loadingAction !== null} className="w-full bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 hover:shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:scale-[1.01] active:scale-95 transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed">
                     {loadingAction === "post" ? "Processing Transaction..." : "Post Job to GenLayer"}
                   </button>
                 </div>
@@ -318,11 +285,8 @@ export default function Home() {
               <div>
                 <div className="flex justify-between items-center mb-8">
                   <h2 className="text-3xl font-extrabold text-white">Job Board</h2>
-                  <button onClick={() => fetchJobs()} className="bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm hover:bg-slate-700 transition-all duration-300 border border-slate-700 hover:scale-105 active:scale-95 shadow-lg">
-                    ↻ Refresh
-                  </button>
+                  <button onClick={() => fetchJobs()} className="bg-slate-800 text-white px-5 py-2.5 rounded-full text-sm hover:bg-slate-700 transition-all duration-300 border border-slate-700 hover:scale-105 active:scale-95 shadow-lg">↻ Refresh</button>
                 </div>
-
                 <div className="grid gap-6">
                   {jobs.length === 0 ? (
                     <div className="text-center p-12 bg-[#0B1426] rounded-3xl border border-slate-800/80 text-slate-400 shadow-xl">No jobs available right now.</div>
@@ -331,70 +295,27 @@ export default function Home() {
                       <div key={job.id} className="bg-[#0B1426] p-6 rounded-3xl border border-slate-800/80 shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center hover:border-slate-600 hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
                         <div className="mb-4 md:mb-0 flex-1 pr-4">
                           <div className="flex flex-wrap items-center gap-2 mb-3">
-                            <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">
-                              Job #{job.id}
-                            </span>
-                            <span className="bg-purple-900/40 text-purple-300 text-xs font-bold px-3 py-1 rounded-full border border-purple-800/50">
-                              💰 {job.price} GEN
-                            </span>
-                            {isMyJob(job) && (
-                              <span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">
-                                🔒 Your Job
-                              </span>
-                            )}
+                            <span className="bg-blue-900/40 text-blue-300 text-xs font-bold px-3 py-1 rounded-full border border-blue-800/50">Job #{job.id}</span>
+                            <span className="bg-purple-900/40 text-purple-300 text-xs font-bold px-3 py-1 rounded-full border border-purple-800/50">💰 {job.price} GEN</span>
+                            {isMyJob(job) && (<span className="bg-green-900/40 text-green-400 text-xs font-bold px-3 py-1 rounded-full border border-green-800/50">🔒 Your Job</span>)}
                           </div>
                           <h3 className="text-xl font-bold text-white mb-2">{job.desc}</h3>
-                          <p className="text-sm text-slate-400">
-                            Status:{" "}
-                            <span className={`font-bold ml-1 ${job.status === "COMPLETED" ? "text-green-400" : job.status === "SUBMITTED" ? "text-amber-400" : "text-blue-400"}`}>
-                              {job.status}
-                            </span>
-                          </p>
-                          {job.client && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span>
-                            </p>
-                          )}
-                          {job.freelancer && (
-                            <p className="text-xs text-slate-500 mt-1">
-                              Freelancer: <span className="font-mono text-slate-400">{shortAddr(job.freelancer)}</span>
-                            </p>
-                          )}
-                          {job.url && (
-                            <p className="text-sm text-slate-400 mt-2">
-                              Work Link:{" "}
-                              <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition">
-                                {job.url}
-                              </a>
-                            </p>
-                          )}
+                          <p className="text-sm text-slate-400">Status: <span className={`font-bold ml-1 ${job.status === "COMPLETED" ? "text-green-400" : job.status === "SUBMITTED" ? "text-amber-400" : "text-blue-400"}`}>{job.status}</span></p>
+                          {job.client && (<p className="text-xs text-slate-500 mt-1">Client: <span className="font-mono text-slate-400">{shortAddr(job.client)}</span></p>)}
+                          {job.freelancer && (<p className="text-xs text-slate-500 mt-1">Freelancer: <span className="font-mono text-slate-400">{shortAddr(job.freelancer)}</span></p>)}
+                          {job.url && (<p className="text-sm text-slate-400 mt-2">Work Link: <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline transition">{job.url}</a></p>)}
                         </div>
-
                         <div className="w-full md:w-auto flex flex-col gap-3 min-w-[260px]">
                           {job.status === "OPEN" && (
                             <>
-                              <input
-                                type="text"
-                                placeholder="Paste Work URL here..."
-                                className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-colors"
-                                value={inputUrls[job.id] || ""}
-                                onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))}
-                              />
-                              <button
-                                onClick={() => handleSubmitWork(job.id)}
-                                disabled={loadingAction !== null}
-                                className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                              >
+                              <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500 transition-colors" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                              <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                                 {loadingAction === `submit-${job.id}` ? "Processing..." : "Submit Work"}
                               </button>
                             </>
                           )}
                           {job.status === "SUBMITTED" && (
-                            <button
-                              onClick={() => handleApproveWork(job)}
-                              disabled={loadingAction !== null}
-                              className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
+                            <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 hover:shadow-[0_0_15px_rgba(37,99,235,0.4)] hover:scale-[1.02] active:scale-95 transition-all duration-300 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
                               {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Pay ${job.price} GEN & Approve`}
                             </button>
                           )}
@@ -411,41 +332,6 @@ export default function Home() {
                 </div>
               </div>
             )}
-
-            {activeTab === "history" && (
-              <div>
-                <div className="flex justify-between items-center mb-8">
-                  <h2 className="text-3xl font-extrabold text-white">Transaction History</h2>
-                  {history.length > 0 && (
-                    <button onClick={clearHistory} className="bg-red-900/30 text-red-400 px-5 py-2.5 rounded-full text-sm hover:bg-red-900/50 transition-all duration-300 border border-red-800/50 hover:scale-105 active:scale-95">
-                      Clear History
-                    </button>
-                  )}
-                </div>
-                
-                <div className="bg-[#0B1426] rounded-3xl border border-slate-800/80 shadow-xl overflow-hidden">
-                  {history.length === 0 ? (
-                    <div className="text-center p-12 text-slate-500">No transactions found in this session.</div>
-                  ) : (
-                    <div className="divide-y divide-slate-800/60">
-                      {history.map((record, idx) => (
-                        <div key={idx} className="p-5 md:p-6 flex flex-col md:flex-row justify-between md:items-center hover:bg-[#0f1b33] transition-colors duration-300 group">
-                          <div className="mb-3 md:mb-0">
-                            <h4 className="font-bold text-lg text-slate-200">{record.action}</h4>
-                            <p className="text-sm text-slate-500 mt-1">{record.time}</p>
-                          </div>
-                          <a href={`https://explorer-bradbury.genlayer.com/tx/${record.hash}`} target="_blank" rel="noreferrer" className="flex items-center gap-2 bg-slate-800/50 px-4 py-2 rounded-xl text-blue-400 hover:text-white hover:bg-blue-600 transition-all duration-300 text-sm font-mono border border-slate-700 group-hover:border-blue-500">
-                            View on Explorer
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
-                          </a>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-            
           </div>
         )}
       </div>
