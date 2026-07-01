@@ -124,7 +124,6 @@ export default function Home() {
     try {
       setLoadingAction("post");
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobPrice.toString(), address]);
-      
       saveToHistory(tx, `Posted Job for ${jobPrice} GEN`);
       setJobDesc("");
       setJobPrice("");
@@ -132,7 +131,6 @@ export default function Home() {
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
-      alert("Transaction failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -145,9 +143,8 @@ export default function Home() {
     try {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
-      
       saveToHistory(tx, `Submitted Work for AI Eval`);
-      showToast("Work Submitted to AI!", tx);
+      showToast("Work Submitted to AI Evaluator!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
@@ -164,28 +161,36 @@ export default function Home() {
       await switchToGenLayerNetwork();
 
       showToast("Sending GEN tokens to freelancer...", "");
-      
       const hexValue = toWeiHex(job.price);
       const paymentTx = await provider.request({
         method: 'eth_sendTransaction',
-        params: [{
-          from: address,
-          to: job.freelancer,
-          value: hexValue,
-        }],
+        params: [{ from: address, to: job.freelancer, value: hexValue }],
       });
 
       saveToHistory(paymentTx, `Paid ${job.price} GEN`);
       showToast("Confirming on GenLayer...", paymentTx);
 
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
-      
       saveToHistory(tx, `Approved Job #${job.id}`);
       showToast("Payment Delivered!", tx);
       setTimeout(() => fetchJobs(), 5000);
     } catch (error) {
       console.error(error);
-      alert("Payment failed.");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleRejectWork = async (jobId: string) => {
+    if (!address) return alert("Connect wallet first");
+    try {
+      setLoadingAction(`reject-${jobId}`);
+      const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
+      saveToHistory(tx, `Rejected Job #${jobId}`);
+      showToast("Job Rejected and Re-opened!", tx);
+      setTimeout(() => fetchJobs(), 5000);
+    } catch (error) {
+      console.error(error);
     } finally {
       setLoadingAction(null);
     }
@@ -198,7 +203,6 @@ export default function Home() {
     try {
       setLoadingAction(`appeal-${jobId}`);
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
-      
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal Submitted Successfully!", tx);
       setTimeout(() => fetchJobs(), 5000);
@@ -233,7 +237,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* FIXED NAVIGATION MENU */}
       <nav className="border-b border-slate-800/60 bg-[#020817]/90 backdrop-blur-md sticky top-0 z-40 transition-all duration-300">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("post")}>
@@ -247,13 +250,8 @@ export default function Home() {
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button
-              onClick={() => setIsMenuOpen(true)}
-              className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none"
-            >
-              <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
-              </svg>
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden">
+              <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
         </div>
@@ -269,9 +267,9 @@ export default function Home() {
             </button>
           </div>
           <div className="flex flex-col gap-3">
-            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border transition-all duration-300 ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Dashboard</button>
-            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold border transition-all duration-300 ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>Job Board</button>
-            <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold border transition-all duration-300 ${activeTab === "history" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50 hover:text-white"}`}>History</button>
+            <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "post" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50"}`}>Dashboard</button>
+            <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "board" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50"}`}>Job Board</button>
+            <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold border ${activeTab === "history" ? "bg-slate-800 border-slate-600 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-slate-800/50"}`}>History</button>
           </div>
           <div className="mt-auto pt-8 border-t border-slate-800 block md:hidden">
             <ConnectButton showBalance={false} />
@@ -327,7 +325,6 @@ export default function Home() {
                             Status: <span className={`font-bold ${job.status === "COMPLETED" ? "text-green-400" : job.status === "AI_APPROVED" ? "text-green-300" : job.status === "AI_REJECTED" ? "text-red-400" : "text-amber-400"}`}>{job.status}</span>
                           </p>
                           
-                          {/* AI Evaluation Message */}
                           {(job.status !== "OPEN" && job.ai_decision) && (
                             <div className="mt-2 p-2 bg-[#060c18] rounded-lg border border-slate-800/60 inline-block">
                               <p className="text-xs text-slate-300">🤖 {job.ai_decision}</p>
@@ -341,7 +338,6 @@ export default function Home() {
 
                         <div className="w-full md:w-auto flex flex-col gap-3 min-w-[260px]">
                           
-                          {/* ১. OPEN Status Logic */}
                           {job.status === "OPEN" && (
                             isMyJob(job) ? (
                               <div className="bg-blue-900/20 text-blue-400 py-3 rounded-xl font-bold text-center border border-blue-800/50">
@@ -351,18 +347,25 @@ export default function Home() {
                               <>
                                 <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
                                 <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className="bg-slate-200 text-slate-900 py-3 rounded-xl font-bold hover:bg-white transition-all disabled:opacity-50">
-                                  {loadingAction === `submit-${job.id}` ? "Evaluating..." : "Submit to AI"}
+                                  {loadingAction === `submit-${job.id}` ? "AI is Evaluating..." : "Submit to AI"}
                                 </button>
                               </>
                             )
                           )}
 
-                          {/* ২. SUBMITTED / AI_APPROVED Logic */}
-                          {["SUBMITTED", "AI_APPROVED"].includes(job.status) && (
+                          {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
                             isMyJob(job) ? (
-                              <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50">
-                                {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Pay ${job.price} GEN & Complete`}
-                              </button>
+                              <div className="flex flex-col gap-2">
+                                {job.status === "SUBMITTED" && (
+                                  <span className="text-xs text-amber-400 mb-1 text-center">⚠️ Manual Check Needed</span>
+                                )}
+                                <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className="bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)] disabled:opacity-50">
+                                  {loadingAction === `approve-${job.id}` ? "Sending GEN..." : `Approve & Pay ${job.price} GEN`}
+                                </button>
+                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className="bg-red-600/20 text-red-400 border border-red-800/50 py-3 rounded-xl font-bold hover:bg-red-600 hover:text-white transition-all disabled:opacity-50">
+                                  {loadingAction === `reject-${job.id}` ? "Rejecting..." : "Reject Work"}
+                                </button>
+                              </div>
                             ) : (
                               <div className="bg-amber-900/20 text-amber-400 py-3 px-2 rounded-xl font-bold text-center border border-amber-800/50 flex flex-col">
                                 <span>Work Submitted 🚀</span>
@@ -371,11 +374,13 @@ export default function Home() {
                             )
                           )}
 
-                          {/* ৩. AI_REJECTED / APPEAL Logic */}
                           {job.status === "AI_REJECTED" && (
                             isMyJob(job) ? (
-                              <div className="bg-red-900/20 text-red-400 py-3 rounded-xl font-bold text-center border border-red-800/50">
-                                AI Rejected. Waiting for Appeal.
+                              <div className="flex flex-col gap-2">
+                                <span className="text-xs text-red-400 text-center">🤖 AI Rejected this work.</span>
+                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className="bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-500 transition-all disabled:opacity-50">
+                                  {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Reject & Re-open"}
+                                </button>
                               </div>
                             ) : (
                               <>
@@ -387,14 +392,6 @@ export default function Home() {
                             )
                           )}
 
-                          {/* ৪. APPEALED Logic */}
-                          {job.status === "APPEALED" && (
-                            <div className="bg-purple-900/20 text-purple-400 py-3 rounded-xl font-bold text-center border border-purple-800/50">
-                              Under Manual Review
-                            </div>
-                          )}
-
-                          {/* ৫. COMPLETED Logic */}
                           {job.status === "COMPLETED" && (
                             <div className="bg-green-900/20 text-green-400 py-3 rounded-xl font-bold text-center border border-green-800/50 flex flex-col shadow-inner">
                               <span>Payment Delivered ✓</span>
