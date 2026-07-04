@@ -6,17 +6,17 @@ import { useAccount } from "wagmi";
 import { CONTRACT_ADDRESS } from "./constants";
 
 import { createClient } from "genlayer-js";
-import { testnetBradbury } from "genlayer-js/chains";
+import { studionet } from "genlayer-js/chains";
 
-const BRADBURY_NETWORK = {
-  chainId: "0x107D",
-  chainName: "GenLayer Testnet Bradbury",
+const STUDIONET_NETWORK = {
+  chainId: "0xF22F",
+  chainName: "GenLayer Studionet",
   nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-  rpcUrls: ["https://rpc-bradbury.genlayer.com"],
-  blockExplorerUrls: ["https://explorer-bradbury.genlayer.com"],
+  rpcUrls: ["https://studio.genlayer.com/api"],
+  blockExplorerUrls: ["https://explorer-studio.genlayer.com"],
 };
 
-const genlayerClient = createClient({ chain: testnetBradbury });
+const genlayerClient = createClient({ chain: studionet });
 
 const toWeiHex = (eth: string) => {
   const [whole, fraction = ""] = eth.split(".");
@@ -126,13 +126,13 @@ export default function Home() {
     try {
       await provider.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: BRADBURY_NETWORK.chainId }],
+        params: [{ chainId: STUDIONET_NETWORK.chainId }],
       });
     } catch (error: any) {
       if (error.code === 4902) {
         await provider.request({
           method: "wallet_addEthereumChain",
-          params: [BRADBURY_NETWORK],
+          params: [STUDIONET_NETWORK],
         });
       }
     }
@@ -142,7 +142,7 @@ export default function Home() {
     if (!address) throw new Error("Wallet not connected");
     await switchToGenLayerNetwork();
     const client = createClient({
-      chain: testnetBradbury,
+      chain: studionet,
       account: address as `0x${string}`,
     });
     const hash = await client.writeContract({
@@ -167,7 +167,7 @@ export default function Home() {
       setJobDesc("");
       setJobPrice("");
       showToast("Job Posted! Waiting for confirmation...", tx);
-      setTimeout(() => fetchJobs(), 5000);
+      setTimeout(() => fetchJobs(), 3000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -187,7 +187,7 @@ export default function Home() {
       saveToHistory(tx, `Submitted Work for AI Eval`);
       addPendingTx(jobId, "submit");
       showToast("Work Submitted! Transaction processing...", tx);
-      setTimeout(() => fetchJobs(), 5000);
+      setTimeout(() => fetchJobs(), 3000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -220,7 +220,7 @@ export default function Home() {
       addPendingTx(job.id, "approve");
       
       showToast("Transaction sent to blockchain!", tx);
-      setTimeout(() => fetchJobs(), 5000);
+      setTimeout(() => fetchJobs(), 3000);
     } catch (error) {
       console.error(error);
       alert("Payment was cancelled or failed.");
@@ -239,7 +239,7 @@ export default function Home() {
       saveToHistory(tx, `Rejected Job #${jobId}`);
       addPendingTx(jobId, "reject");
       showToast("Reject transaction processing...", tx);
-      setTimeout(() => fetchJobs(), 5000);
+      setTimeout(() => fetchJobs(), 3000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -259,7 +259,7 @@ export default function Home() {
       saveToHistory(tx, `Appealed Job #${jobId}`);
       addPendingTx(jobId, "appeal");
       showToast("Appeal transaction processing...", tx);
-      setTimeout(() => fetchJobs(), 5000);
+      setTimeout(() => fetchJobs(), 3000);
     } catch (error) {
       console.error(error);
     } finally {
@@ -284,7 +284,7 @@ export default function Home() {
         <div className="fixed top-6 right-6 z-[100] bg-green-600/95 backdrop-blur text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-green-500/50">
           <span className="font-medium">{toast.message}</span>
           {toast.tx && (
-            <a href={`https://explorer-bradbury.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold">
+            <a href={`https://explorer-studio.genlayer.com/tx/${toast.tx}`} target="_blank" rel="noreferrer" className="bg-white/20 hover:bg-white/30 px-3 py-1.5 rounded-lg text-sm font-bold">
               View
             </a>
           )}
@@ -304,7 +304,7 @@ export default function Home() {
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 transition-all duration-300 focus:outline-none">
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
@@ -408,7 +408,7 @@ export default function Home() {
                                     <>
                                       <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
                                       <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'submit-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-900 hover:bg-white'}`}>
-                                        {loadingAction === `submit-${job.id}` ? "Sending..." : "Submit to AI"}
+                                        {loadingAction === `submit-${job.id}` ? "AI is Evaluating..." : "Submit to AI"}
                                       </button>
                                     </>
                                   )
@@ -487,7 +487,7 @@ export default function Home() {
                             <h4 className="font-bold text-slate-200">{record.action}</h4>
                             <p className="text-sm text-slate-500">{record.time}</p>
                           </div>
-                          <a href={`https://explorer-bradbury.genlayer.com/tx/${record.hash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-white text-sm font-bold bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700">
+                          <a href={`https://explorer-studio.genlayer.com/tx/${record.hash}`} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-white text-sm font-bold bg-slate-800/50 px-3 py-1.5 rounded-lg border border-slate-700">
                             View
                           </a>
                         </div>
