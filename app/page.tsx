@@ -6,17 +6,9 @@ import { useAccount } from "wagmi";
 import { CONTRACT_ADDRESS } from "./constants";
 
 import { createClient } from "genlayer-js";
-import { studionet } from "genlayer-js/chains";
+import { simulator } from "genlayer-js/chains"; // Corrected SDK Network Name
 
-const STUDIONET_NETWORK = {
-  chainId: "0xF22F",
-  chainName: "GenLayer Studionet",
-  nativeCurrency: { name: "GEN", symbol: "GEN", decimals: 18 },
-  rpcUrls: ["https://studio.genlayer.com/api"],
-  blockExplorerUrls: ["https://explorer-studio.genlayer.com"],
-};
-
-const genlayerClient = createClient({ chain: studionet });
+const genlayerClient = createClient({ chain: simulator });
 
 const toWeiHex = (eth: string) => {
   const [whole, fraction = ""] = eth.split(".");
@@ -111,7 +103,7 @@ export default function Home() {
           localStorage.setItem("genwork_pending_txs", JSON.stringify(currentPending));
         }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error fetching jobs:", error);
     }
   }, []);
@@ -123,17 +115,27 @@ export default function Home() {
   const switchToGenLayerNetwork = async () => {
     const provider = (window as any).ethereum;
     if (!provider) throw new Error("No crypto wallet found");
+    
+    const targetChainId = `0x${simulator.id.toString(16)}`;
+    
     try {
       await provider.request({
         method: "wallet_switchEthereumChain",
-        params: [{ chainId: STUDIONET_NETWORK.chainId }],
+        params: [{ chainId: targetChainId }],
       });
     } catch (error: any) {
       if (error.code === 4902) {
         await provider.request({
           method: "wallet_addEthereumChain",
-          params: [STUDIONET_NETWORK],
+          params: [{
+            chainId: targetChainId,
+            chainName: simulator.name || "GenLayer Studio",
+            nativeCurrency: simulator.nativeCurrency || { name: "GEN", symbol: "GEN", decimals: 18 },
+            rpcUrls: simulator.rpcUrls?.default?.http || ["https://studio.genlayer.com/api"],
+          }],
         });
+      } else {
+        throw error;
       }
     }
   };
@@ -142,7 +144,7 @@ export default function Home() {
     if (!address) throw new Error("Wallet not connected");
     await switchToGenLayerNetwork();
     const client = createClient({
-      chain: studionet,
+      chain: simulator,
       account: address as `0x${string}`,
     });
     const hash = await client.writeContract({
@@ -168,8 +170,9 @@ export default function Home() {
       setJobPrice("");
       showToast("Job Posted! Waiting for confirmation...", tx);
       setTimeout(() => fetchJobs(), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert("Error: " + (error.message || "Transaction failed"));
     } finally {
       setLoadingAction(null);
     }
@@ -188,8 +191,9 @@ export default function Home() {
       addPendingTx(jobId, "submit");
       showToast("Work Submitted! Transaction processing...", tx);
       setTimeout(() => fetchJobs(), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert("Error: " + (error.message || "Transaction failed"));
     } finally {
       setLoadingAction(null);
     }
@@ -221,9 +225,9 @@ export default function Home() {
       
       showToast("Transaction sent to blockchain!", tx);
       setTimeout(() => fetchJobs(), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      alert("Payment was cancelled or failed.");
+      alert("Error: Payment was cancelled or failed.");
     } finally {
       setLoadingAction(null);
     }
@@ -240,8 +244,9 @@ export default function Home() {
       addPendingTx(jobId, "reject");
       showToast("Reject transaction processing...", tx);
       setTimeout(() => fetchJobs(), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert("Error: " + (error.message || "Transaction failed"));
     } finally {
       setLoadingAction(null);
     }
@@ -260,8 +265,9 @@ export default function Home() {
       addPendingTx(jobId, "appeal");
       showToast("Appeal transaction processing...", tx);
       setTimeout(() => fetchJobs(), 3000);
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
+      alert("Error: " + (error.message || "Transaction failed"));
     } finally {
       setLoadingAction(null);
     }
@@ -408,7 +414,7 @@ export default function Home() {
                                     <>
                                       <input type="text" placeholder="Paste Work URL here..." className="p-3 bg-[#060c18] border border-slate-700 rounded-xl text-white focus:outline-none focus:border-blue-500" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
                                       <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold transition-all ${loadingAction === 'submit-'+job.id ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-slate-200 text-slate-900 hover:bg-white'}`}>
-                                        {loadingAction === `submit-${job.id}` ? "AI is Evaluating..." : "Submit to AI"}
+                                        {loadingAction === `submit-${job.id}` ? "Sending..." : "Submit to AI"}
                                       </button>
                                     </>
                                   )
