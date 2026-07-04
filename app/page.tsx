@@ -129,7 +129,7 @@ export default function Home() {
           method: "wallet_addEthereumChain",
           params: [{
             chainId: targetChainId,
-            chainName: studionet.name || "GenLayer Studionet",
+            chainName: studionet.name || "GenLayer Studio",
             nativeCurrency: studionet.nativeCurrency || { name: "GEN", symbol: "GEN", decimals: 18 },
             rpcUrls: studionet.rpcUrls?.default?.http || ["https://studio.genlayer.com/api"],
           }],
@@ -306,11 +306,21 @@ export default function Home() {
             </svg>
             <h1 className="text-2xl font-extrabold tracking-wide text-white">TrustWork</h1>
           </div>
-          <div className="flex items-center gap-4">
+          
+          <div className="flex items-center gap-4 md:gap-8">
+            {/* Desktop Navigation Links */}
+            <div className="hidden md:flex items-center gap-6">
+              <button onClick={() => handleTabChange("post")} className={`font-bold transition-all hover:scale-105 ${activeTab === "post" ? "text-blue-400" : "text-slate-400 hover:text-white"}`}>Dashboard</button>
+              <button onClick={() => handleTabChange("board")} className={`font-bold transition-all hover:scale-105 ${activeTab === "board" ? "text-blue-400" : "text-slate-400 hover:text-white"}`}>Job Board</button>
+              <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400" : "text-slate-400 hover:text-white"}`}>History</button>
+            </div>
+
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none">
+
+            {/* Mobile Hamburger Button */}
+            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none transition-all duration-300">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
           </div>
