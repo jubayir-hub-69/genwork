@@ -6,9 +6,9 @@ import { useAccount } from "wagmi";
 import { CONTRACT_ADDRESS } from "./constants";
 
 import { createClient } from "genlayer-js";
-import { simulator } from "genlayer-js/chains"; // Corrected SDK Network Name
+import { studionet } from "genlayer-js/chains";
 
-const genlayerClient = createClient({ chain: simulator });
+const genlayerClient = createClient({ chain: studionet });
 
 const toWeiHex = (eth: string) => {
   const [whole, fraction = ""] = eth.split(".");
@@ -116,7 +116,7 @@ export default function Home() {
     const provider = (window as any).ethereum;
     if (!provider) throw new Error("No crypto wallet found");
     
-    const targetChainId = `0x${simulator.id.toString(16)}`;
+    const targetChainId = `0x${studionet.id.toString(16)}`;
     
     try {
       await provider.request({
@@ -124,14 +124,14 @@ export default function Home() {
         params: [{ chainId: targetChainId }],
       });
     } catch (error: any) {
-      if (error.code === 4902) {
+      if (error.code === 4902 || error.code === -32603) {
         await provider.request({
           method: "wallet_addEthereumChain",
           params: [{
             chainId: targetChainId,
-            chainName: simulator.name || "GenLayer Studio",
-            nativeCurrency: simulator.nativeCurrency || { name: "GEN", symbol: "GEN", decimals: 18 },
-            rpcUrls: simulator.rpcUrls?.default?.http || ["https://studio.genlayer.com/api"],
+            chainName: studionet.name || "GenLayer Studionet",
+            nativeCurrency: studionet.nativeCurrency || { name: "GEN", symbol: "GEN", decimals: 18 },
+            rpcUrls: studionet.rpcUrls?.default?.http || ["https://studio.genlayer.com/api"],
           }],
         });
       } else {
@@ -144,7 +144,7 @@ export default function Home() {
     if (!address) throw new Error("Wallet not connected");
     await switchToGenLayerNetwork();
     const client = createClient({
-      chain: simulator,
+      chain: studionet,
       account: address as `0x${string}`,
     });
     const hash = await client.writeContract({
