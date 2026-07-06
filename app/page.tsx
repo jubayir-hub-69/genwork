@@ -18,7 +18,7 @@ const toWeiHex = (eth: string) => {
 };
 
 // -------------------------------------------------------------
-// 🌌 Animated Background Component (From Claude AI HTML)
+// 🌌 Animated Background Component
 // -------------------------------------------------------------
 const AnimatedBackground = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -274,23 +274,21 @@ export default function Home() {
   const [activeTab, setActiveTab] = useState("post");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
-  // New Toast State
   const [toast, setToast] = useState<{ message: string; tx: string; type: 'success'|'error'|'info' } | null>(null);
   const toastTimeout = useRef<NodeJS.Timeout | null>(null);
 
   const [jobDesc, setJobDesc] = useState("");
   const [jobPrice, setJobPrice] = useState("");
   const [jobs, setJobs] = useState<any[]>([]);
-  const [inputUrls, setInputUrls] = useState<Record<string, string>>({});
+  const [workInputs, setWorkInputs] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
   
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
-  // 🚀 New sleek auto-dismiss toast logic
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
     setToast({ message, tx, type });
-    toastTimeout.current = setTimeout(() => setToast(null), 3000); // Auto dismiss after 3 seconds
+    toastTimeout.current = setTimeout(() => setToast(null), 3000); 
   };
 
   useEffect(() => {
@@ -369,13 +367,13 @@ export default function Home() {
 
   const handleSubmitWork = async (jobId: string) => {
     if (loadingAction) return;
-    const url = inputUrls[jobId];
-    if (!url) return showToast("Please paste URL first", "", "error");
+    const workData = workInputs[jobId];
+    if (!workData) return showToast("Please paste URL or type text first", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
     
     try {
       setLoadingAction(`submit-${jobId}`);
-      const tx = await sendGenLayerTransaction("submit_work", [jobId, url, address]);
+      const tx = await sendGenLayerTransaction("submit_work", [jobId, workData, address]);
       saveToHistory(tx, `Submitted Work for AI Eval`);
       showToast("Work Submitted! Processing via AI...", tx, "info");
       setTimeout(() => fetchJobs(), 3000);
@@ -466,10 +464,8 @@ export default function Home() {
 
   return (
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
-      {/* Dynamic Animated Background */}
       <AnimatedBackground />
 
-      {/* 🚀 New Premium Auto-Dismiss Toast */}
       {toast && (
         <div className={`fixed top-6 right-6 z-[100] px-6 py-4 rounded-2xl shadow-[0_10px_40px_-10px_rgba(0,0,0,0.5)] flex items-center gap-4 border backdrop-blur-xl transition-all duration-300 animate-in slide-in-from-top-8 fade-in zoom-in-95
           ${toast.type === 'success' ? 'bg-emerald-900/80 border-emerald-500/50 text-emerald-50' : 
@@ -488,7 +484,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* Navigation */}
       <nav className="border-b border-white/5 bg-[#020817]/60 backdrop-blur-xl sticky top-0 z-40 transition-all duration-300">
         <div className="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
           <div className="flex items-center gap-3 cursor-pointer" onClick={() => handleTabChange("post")}>
@@ -505,11 +500,9 @@ export default function Home() {
               <button onClick={() => handleTabChange("board")} className={`font-bold transition-all hover:scale-105 ${activeTab === "board" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Job Board</button>
               <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>History</button>
             </div>
-
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-
             <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700/50 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none backdrop-blur-md">
               <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
             </button>
@@ -517,7 +510,6 @@ export default function Home() {
         </div>
       </nav>
 
-      {/* Mobile Menu */}
       <div className={`fixed inset-0 z-50 transform transition-transform duration-300 ease-in-out ${isMenuOpen ? "translate-x-0" : "translate-x-full"}`}>
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={() => setIsMenuOpen(false)}></div>
         <div className="absolute right-0 top-0 h-full w-72 bg-[#0a1122]/95 backdrop-blur-xl border-l border-white/10 shadow-2xl flex flex-col p-6">
@@ -577,6 +569,8 @@ export default function Home() {
                   ) : (
                     jobs.map((job) => {
                       const isRejectedMsg = job.ai_decision && job.ai_decision.toLowerCase().includes("reject");
+                      // Check if work_data is a URL or text
+                      const isUrl = job.work_data && job.work_data.startsWith("http");
 
                       return (
                         <div key={job.id} className={`bg-[#0B1426]/80 backdrop-blur-xl p-6 md:p-8 rounded-3xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col md:flex-row justify-between items-start md:items-center hover:border-white/20 transition-all w-full overflow-hidden relative group`}>
@@ -587,7 +581,6 @@ export default function Home() {
                               <span className="bg-blue-900/40 text-blue-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-blue-500/30 whitespace-nowrap shadow-sm">JOB #{job.id}</span>
                               <span className="bg-purple-900/40 text-purple-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-purple-500/30 whitespace-nowrap shadow-sm">💰 {job.price} GEN</span>
                               
-                              {/* 🔒 YOUR JOB BADGE */}
                               {isMyJob(job) && (
                                 <span className="bg-emerald-900/60 text-emerald-400 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-emerald-500/40 whitespace-nowrap shadow-[0_0_10px_rgba(52,211,153,0.2)] flex items-center gap-1 animate-in zoom-in">
                                   <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z" clipRule="evenodd"></path></svg>
@@ -599,7 +592,6 @@ export default function Home() {
                             <h3 className="text-2xl font-extrabold text-white mb-3 break-words whitespace-normal leading-snug">{job.desc}</h3>
                             
                             <div className="flex flex-col gap-2 mb-4 bg-black/20 p-4 rounded-2xl border border-white/5">
-                               {/* Shortened Addresses */}
                               {job.client && (
                                 <p className="text-xs text-slate-400 flex items-center justify-between">
                                   <span className="font-semibold text-slate-500">Client</span> 
@@ -612,11 +604,20 @@ export default function Home() {
                                   <span className="font-mono bg-white/5 px-2 py-1 rounded text-slate-300 border border-white/5">{shortAddr(job.freelancer)}</span>
                                 </p>
                               )}
-                              {job.url && (
-                                <p className="text-xs text-slate-400 flex items-center justify-between mt-1">
-                                  <span className="font-semibold text-slate-500">Work Link</span> 
-                                  <a href={job.url} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-[150px] md:max-w-[200px]">{job.url}</a>
-                                </p>
+                              {/* New Smart Work Display */}
+                              {job.work_data && (
+                                <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
+                                  <span className="font-semibold text-slate-500">Submitted Work:</span> 
+                                  {isUrl ? (
+                                    <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
+                                      {job.work_data}
+                                    </a>
+                                  ) : (
+                                    <div className="bg-black/30 p-3 rounded-lg border border-white/5 text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap mt-1">
+                                      {job.work_data}
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </div>
 
@@ -644,13 +645,18 @@ export default function Home() {
                             
                             {job.status === "OPEN" && (
                               isMyJob(job) ? (
-                                <div className="bg-white/5 text-slate-400 py-4 rounded-2xl font-bold text-center border border-white/10 shadow-inner flex flex-col items-center justify-center gap-1">
+                                <div className="bg-white/5 text-slate-400 py-4 rounded-2xl font-bold text-center border border-white/10 shadow-inner flex flex-col items-center justify-center gap-1 h-[100px]">
                                   <svg className="w-6 h-6 text-slate-500 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                   Waiting for Work...
                                 </div>
                               ) : (
                                 <>
-                                  <input type="text" placeholder="Paste Work URL here..." className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors" value={inputUrls[job.id] || ""} onChange={(e) => setInputUrls((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                                  <textarea 
+                                    placeholder="Paste Work URL OR Type/Paste your text here..." 
+                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors resize-y min-h-[100px]" 
+                                    value={workInputs[job.id] || ""} 
+                                    onChange={(e) => setWorkInputs((prev) => ({ ...prev, [job.id]: e.target.value }))} 
+                                  />
                                   <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'submit-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200 hover:scale-[1.02] shadow-[0_0_15px_rgba(255,255,255,0.2)]'}`}>
                                     {loadingAction === `submit-${job.id}` ? "Sending to AI..." : "Submit to AI Evaluator"}
                                   </button>
@@ -669,7 +675,6 @@ export default function Home() {
                                   </button>
                                 </div>
                               ) : (
-                                // ⏳ AWAITING CLIENT APPROVAL logic
                                 <div className="bg-amber-950/40 text-amber-400 py-5 px-4 rounded-2xl font-bold text-center border border-amber-700/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_20px_rgba(217,119,6,0.15)]">
                                   <svg className="w-8 h-8 animate-pulse text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                   <span className="text-[15px]">Awaiting Client Approval</span>
