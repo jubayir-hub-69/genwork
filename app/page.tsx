@@ -280,6 +280,7 @@ export default function Home() {
   const [jobDesc, setJobDesc] = useState("");
   const [jobPrice, setJobPrice] = useState("");
   const [jobs, setJobs] = useState<any[]>([]);
+  const [clearedJobs, setClearedJobs] = useState<string[]>([]);
   const [workInputs, setWorkInputs] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
   
@@ -294,6 +295,9 @@ export default function Home() {
   useEffect(() => {
     const savedHistory = localStorage.getItem("genwork_tx_history");
     if (savedHistory) setHistory(JSON.parse(savedHistory));
+    
+    const savedCleared = localStorage.getItem("genwork_cleared_jobs");
+    if (savedCleared) setClearedJobs(JSON.parse(savedCleared));
   }, []);
 
   const saveToHistory = (hash: string, action: string) => {
@@ -451,6 +455,33 @@ export default function Home() {
     }
   };
 
+  const handleCancelJob = async (jobId: string) => {
+    if (loadingAction) return;
+    if (!address) return showToast("Connect wallet first", "", "error");
+    
+    try {
+      setLoadingAction(`cancel-${jobId}`);
+      const tx = await sendGenLayerTransaction("cancel_job", [jobId, address]);
+      saveToHistory(tx, `Cancelled Job #${jobId}`);
+      showToast("Job Cancelled!", tx, "info");
+      setTimeout(() => fetchJobs(), 3000);
+    } catch (error: any) {
+      showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleClearCompleted = () => {
+    const completedIds = jobs.filter(j => j.status === "COMPLETED" || j.status === "CANCELLED").map(j => j.id);
+    if (completedIds.length === 0) return showToast("No completed or cancelled jobs to clear.", "", "info");
+    
+    const newCleared = [...new Set([...clearedJobs, ...completedIds])];
+    setClearedJobs(newCleared);
+    localStorage.setItem("genwork_cleared_jobs", JSON.stringify(newCleared));
+    showToast("Completed/Cancelled jobs cleared from view!", "", "success");
+  };
+
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     setIsMenuOpen(false);
@@ -461,6 +492,19 @@ export default function Home() {
 
   const isMyJob = (job: any) =>
     address && job.client?.toLowerCase() === address.toLowerCase();
+
+  const getStatusStyle = (status: string) => {
+    switch(status) {
+      case "COMPLETED": return "bg-gradient-to-r from-green-500/20 to-emerald-600/20 text-green-400 border-green-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]";
+      case "AI_APPROVED": return "bg-gradient-to-r from-emerald-500/20 to-teal-600/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]";
+      case "AI_REJECTED": return "bg-gradient-to-r from-rose-500/20 to-red-600/20 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(225,29,72,0.2)]";
+      case "OPEN": return "bg-gradient-to-r from-blue-500/20 to-indigo-600/20 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
+      case "CANCELLED": return "bg-gradient-to-r from-slate-500/20 to-gray-600/20 text-slate-400 border-slate-500/30 shadow-[0_0_10px_rgba(148,163,184,0.2)]";
+      default: return "bg-gradient-to-r from-amber-500/20 to-orange-600/20 text-amber-400 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+    }
+  };
+
+  const visibleJobs = jobs.filter(j => !clearedJobs.includes(j.id));
 
   return (
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
@@ -559,23 +603,27 @@ export default function Home() {
 
             {activeTab === "board" && (
               <div className="w-full">
-                <div className="flex justify-between items-center mb-8">
+                <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                   <h2 className="text-3xl font-extrabold text-white drop-shadow-lg">Job Board</h2>
-                  <button onClick={() => fetchJobs()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md">↻ Refresh</button>
+                  <div className="flex items-center gap-3">
+                    <button onClick={handleClearCompleted} className="bg-emerald-950/40 text-emerald-400 px-4 py-2.5 rounded-full text-sm font-bold hover:bg-emerald-900/60 border border-emerald-900/50 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex items-center gap-2">
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                      Clear Completed
+                    </button>
+                    <button onClick={() => fetchJobs()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md">↻ Refresh</button>
+                  </div>
                 </div>
                 <div className="grid gap-6 w-full">
-                  {jobs.length === 0 ? (
-                    <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-3xl border border-white/10 text-slate-400 shadow-xl">No jobs available right now.</div>
+                  {visibleJobs.length === 0 ? (
+                    <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-3xl border border-white/10 text-slate-400 shadow-xl">No active jobs to display right now.</div>
                   ) : (
-                    jobs.map((job) => {
+                    visibleJobs.map((job) => {
                       const isRejectedMsg = job.ai_decision && job.ai_decision.toLowerCase().includes("reject");
-                      // Check if work_data is a URL or text
                       const isUrl = job.work_data && job.work_data.startsWith("http");
 
                       return (
                         <div key={job.id} className={`bg-[#0B1426]/80 backdrop-blur-xl p-6 md:p-8 rounded-3xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col md:flex-row justify-between items-start md:items-center hover:border-white/20 transition-all w-full overflow-hidden relative group`}>
                           
-                          {/* Left Side: Job Info */}
                           <div className="mb-6 md:mb-0 flex-1 pr-4 min-w-0 w-full z-10">
                             <div className="flex flex-wrap items-center gap-3 mb-4">
                               <span className="bg-blue-900/40 text-blue-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-blue-500/30 whitespace-nowrap shadow-sm">JOB #{job.id}</span>
@@ -604,7 +652,6 @@ export default function Home() {
                                   <span className="font-mono bg-white/5 px-2 py-1 rounded text-slate-300 border border-white/5">{shortAddr(job.freelancer)}</span>
                                 </p>
                               )}
-                              {/* New Smart Work Display */}
                               {job.work_data && (
                                 <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
                                   <span className="font-semibold text-slate-500">Submitted Work:</span> 
@@ -621,38 +668,41 @@ export default function Home() {
                               )}
                             </div>
 
-                            <p className="text-sm font-semibold flex items-center gap-2">
-                              Status: 
-                              <span className={`px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider
-                                ${job.status === "COMPLETED" ? "bg-green-500/20 text-green-400" : 
-                                  job.status === "AI_APPROVED" ? "bg-emerald-500/20 text-emerald-400" : 
-                                  job.status === "AI_REJECTED" ? "bg-rose-500/20 text-rose-400" : 
-                                  job.status === "OPEN" ? "bg-blue-500/20 text-blue-400" :
-                                  "bg-amber-500/20 text-amber-400"}`}>
+                            {/* STYLISH STATUS BADGE */}
+                            <div className="flex items-center gap-3">
+                              <span className="text-sm font-semibold text-slate-300">Status:</span>
+                              <span className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest border ${getStatusStyle(job.status)} flex items-center gap-1.5`}>
+                                {job.status !== "COMPLETED" && job.status !== "CANCELLED" && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
+                                )}
                                 {job.status.replace('_', ' ')}
                               </span>
-                            </p>
+                            </div>
                             
                             {(job.status !== "OPEN" && job.ai_decision) && (
-                              <div className={`mt-3 p-3 rounded-xl border max-w-full ${isRejectedMsg ? 'bg-rose-950/40 border-rose-900/50' : 'bg-slate-900/60 border-slate-700/50 shadow-inner'}`}>
+                              <div className={`mt-4 p-4 rounded-xl border max-w-full ${isRejectedMsg ? 'bg-rose-950/40 border-rose-900/50' : 'bg-slate-900/60 border-slate-700/50 shadow-inner'}`}>
                                 <p className={`text-sm break-words leading-relaxed ${isRejectedMsg ? 'text-rose-300 font-medium' : 'text-slate-300'}`}>🤖 {job.ai_decision}</p>
                               </div>
                             )}
                           </div>
 
-                          {/* Right Side: Action Buttons */}
                           <div className="w-full md:w-auto flex flex-col gap-3 md:min-w-[280px] shrink-0 z-10">
                             
                             {job.status === "OPEN" && (
                               isMyJob(job) ? (
-                                <div className="bg-white/5 text-slate-400 py-4 rounded-2xl font-bold text-center border border-white/10 shadow-inner flex flex-col items-center justify-center gap-1 h-[100px]">
-                                  <svg className="w-6 h-6 text-slate-500 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                  Waiting for Work...
+                                <div className="flex flex-col gap-3 w-full">
+                                  <div className="bg-white/5 text-slate-400 py-4 rounded-2xl font-bold text-center border border-white/10 shadow-inner flex flex-col items-center justify-center gap-2 h-[100px]">
+                                    <svg className="w-6 h-6 text-slate-500 animate-spin-slow" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                    Waiting for Work...
+                                  </div>
+                                  <button onClick={() => handleCancelJob(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold border transition-all w-full ${loadingAction === 'cancel-'+job.id ? 'bg-transparent text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-transparent text-rose-400 border-rose-900/50 hover:bg-rose-950/50 shadow-sm'}`}>
+                                    {loadingAction === `cancel-${job.id}` ? "Cancelling..." : "Cancel Job"}
+                                  </button>
                                 </div>
                               ) : (
                                 <>
                                   <textarea 
-                                    placeholder="Paste Work URL OR Type/Paste your text here..." 
+                                    placeholder="Paste URL OR Type text here..." 
                                     className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors resize-y min-h-[100px]" 
                                     value={workInputs[job.id] || ""} 
                                     onChange={(e) => setWorkInputs((prev) => ({ ...prev, [job.id]: e.target.value }))} 
@@ -704,6 +754,13 @@ export default function Home() {
                                 <svg className="w-10 h-10 text-emerald-500 mb-1 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 <span className="text-lg relative z-10">Payment Delivered</span>
                                 <span className="text-sm text-emerald-300/80 font-medium relative z-10">{job.price} GEN Sent to Wallet</span>
+                              </div>
+                            )}
+
+                            {job.status === "CANCELLED" && (
+                              <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner relative overflow-hidden">
+                                <svg className="w-10 h-10 text-slate-500 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span className="text-lg">Job Cancelled</span>
                               </div>
                             )}
                           </div>
