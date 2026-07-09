@@ -394,26 +394,31 @@ export default function Home() {
     
     try {
       setLoadingAction(`approve-${job.id}`);
-      const provider = (window as any).ethereum;
-
-      showToast("Approve the payment in your wallet...", "", "info");
-      const hexValue = toWeiHex(job.price);
       
-      const paymentTx = await provider.request({
-        method: 'eth_sendTransaction',
-        params: [{ from: address, to: job.freelancer, value: hexValue }],
-      });
-
-      saveToHistory(paymentTx, `Paid ${job.price} GEN`);
-      showToast("Payment sent! Confirming on GenLayer...", paymentTx, "success");
-
+      // Step 1: Call GenLayer Contract First (To fix double payment bug)
+      showToast("Confirming approval on GenLayer...", "", "info");
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
       saveToHistory(tx, `Approved Job #${job.id}`);
+      showToast("Job Completed! Now processing payment...", tx, "success");
       
-      showToast("Transaction completely confirmed!", tx, "success");
+      // Step 2: Pay via MetaMask
+      const provider = (window as any).ethereum;
+      const hexValue = toWeiHex(job.price);
+      
+      try {
+        const paymentTx = await provider.request({
+          method: 'eth_sendTransaction',
+          params: [{ from: address, to: job.freelancer, value: hexValue }],
+        });
+        saveToHistory(paymentTx, `Paid ${job.price} GEN`);
+        showToast("Payment sent successfully!", paymentTx, "success");
+      } catch (err) {
+        showToast("Job Approved, but Wallet Payment was cancelled. Please send manually.", "", "error");
+      }
+      
       setTimeout(() => fetchJobs(), 3000);
     } catch (error: any) {
-      showToast("Payment was cancelled or failed.", "", "error");
+      showToast(error.message || "Approval transaction failed", "", "error");
     } finally {
       setLoadingAction(null);
     }
@@ -506,6 +511,15 @@ export default function Home() {
 
   const visibleJobs = jobs.filter(j => !clearedJobs.includes(j.id));
 
+  // Handler for Price Input to prevent Scientific Notation
+  const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Regex allows empty string or numbers with maximum one decimal point, blocking 'e', '+', '-'
+    if (val === '' || /^\d*\.?\d*$/.test(val)) {
+      setJobPrice(val);
+    }
+  };
+
   return (
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
       <AnimatedBackground />
@@ -592,7 +606,7 @@ export default function Home() {
                   <textarea className="w-full p-5 bg-[#060c18]/80 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-blue-500 resize-none transition-colors shadow-inner" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
                   <div className="flex items-center bg-[#060c18]/80 border border-white/10 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors shadow-inner">
                     <span className="px-5 text-slate-400 font-bold bg-white/5 border-r border-white/10 py-4 whitespace-nowrap">Price (GEN)</span>
-                    <input type="number" step="0.01" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={(e) => setJobPrice(e.target.value)} placeholder="e.g. 5.5" />
+                    <input type="text" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={handlePriceChange} placeholder="e.g. 5.5" />
                   </div>
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
                     {loadingAction === "post" ? "Processing..." : "Post Job to GenLayer"}
@@ -668,7 +682,6 @@ export default function Home() {
                               )}
                             </div>
 
-                            {/* STYLISH STATUS BADGE */}
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-semibold text-slate-300">Status:</span>
                               <span className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest border ${getStatusStyle(job.status)} flex items-center gap-1.5`}>
