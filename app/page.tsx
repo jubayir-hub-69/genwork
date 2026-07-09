@@ -293,10 +293,11 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const savedHistory = localStorage.getItem("genwork_tx_history");
+    // 💡 Fix: Bind localStorage keys to the Contract Address to prevent ID collisions!
+    const savedHistory = localStorage.getItem(`genwork_tx_history_${CONTRACT_ADDRESS}`);
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     
-    const savedCleared = localStorage.getItem("genwork_cleared_jobs");
+    const savedCleared = localStorage.getItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
     if (savedCleared) setClearedJobs(JSON.parse(savedCleared));
   }, []);
 
@@ -304,13 +305,19 @@ export default function Home() {
     const newRecord = { hash, action, time: new Date().toLocaleString() };
     const updatedHistory = [newRecord, ...history];
     setHistory(updatedHistory);
-    localStorage.setItem("genwork_tx_history", JSON.stringify(updatedHistory));
+    localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
   const clearHistoryAndLocks = () => {
     setHistory([]);
+    setClearedJobs([]);
+    // Remove the current contract's memory
+    localStorage.removeItem(`genwork_tx_history_${CONTRACT_ADDRESS}`);
+    localStorage.removeItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
+    // Also clear old keys just in case
     localStorage.removeItem("genwork_tx_history");
-    showToast("History cleared successfully!", "", 'success');
+    localStorage.removeItem("genwork_cleared_jobs");
+    showToast("Records & Hidden Jobs cleared successfully!", "", 'success');
   };
 
   const fetchJobs = useCallback(async () => {
@@ -395,13 +402,11 @@ export default function Home() {
     try {
       setLoadingAction(`approve-${job.id}`);
       
-      // Step 1: Call GenLayer Contract First (To fix double payment bug)
       showToast("Confirming approval on GenLayer...", "", "info");
       const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
       saveToHistory(tx, `Approved Job #${job.id}`);
       showToast("Job Completed! Now processing payment...", tx, "success");
       
-      // Step 2: Pay via MetaMask
       const provider = (window as any).ethereum;
       const hexValue = toWeiHex(job.price);
       
@@ -483,7 +488,7 @@ export default function Home() {
     
     const newCleared = [...new Set([...clearedJobs, ...completedIds])];
     setClearedJobs(newCleared);
-    localStorage.setItem("genwork_cleared_jobs", JSON.stringify(newCleared));
+    localStorage.setItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`, JSON.stringify(newCleared));
     showToast("Completed/Cancelled jobs cleared from view!", "", "success");
   };
 
@@ -511,10 +516,8 @@ export default function Home() {
 
   const visibleJobs = jobs.filter(j => !clearedJobs.includes(j.id));
 
-  // Handler for Price Input to prevent Scientific Notation
   const handlePriceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
-    // Regex allows empty string or numbers with maximum one decimal point, blocking 'e', '+', '-'
     if (val === '' || /^\d*\.?\d*$/.test(val)) {
       setJobPrice(val);
     }
