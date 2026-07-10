@@ -293,7 +293,6 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // 💡 Fix: Bind localStorage keys to the Contract Address to prevent ID collisions!
     const savedHistory = localStorage.getItem(`genwork_tx_history_${CONTRACT_ADDRESS}`);
     if (savedHistory) setHistory(JSON.parse(savedHistory));
     
@@ -311,12 +310,8 @@ export default function Home() {
   const clearHistoryAndLocks = () => {
     setHistory([]);
     setClearedJobs([]);
-    // Remove the current contract's memory
     localStorage.removeItem(`genwork_tx_history_${CONTRACT_ADDRESS}`);
     localStorage.removeItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
-    // Also clear old keys just in case
-    localStorage.removeItem("genwork_tx_history");
-    localStorage.removeItem("genwork_cleared_jobs");
     showToast("Records & Hidden Jobs cleared successfully!", "", 'success');
   };
 
@@ -523,6 +518,13 @@ export default function Home() {
     }
   };
 
+  // --- NEW: STATS CALCULATION (Feature 2) ---
+  const totalJobsCount = jobs.length;
+  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
+  const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED", "AI_REJECTED"].includes(j.status)).length;
+  const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
+  const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
+
   return (
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
       <AnimatedBackground />
@@ -556,17 +558,21 @@ export default function Home() {
           </div>
           
           <div className="flex items-center gap-4 md:gap-8">
-            <div className="hidden md:flex items-center gap-6 bg-white/5 px-6 py-2 rounded-full border border-white/10 shadow-inner">
-              <button onClick={() => handleTabChange("post")} className={`font-bold transition-all hover:scale-105 ${activeTab === "post" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Dashboard</button>
-              <button onClick={() => handleTabChange("board")} className={`font-bold transition-all hover:scale-105 ${activeTab === "board" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Job Board</button>
-              <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>History</button>
-            </div>
+            {isConnected && (
+              <div className="hidden md:flex items-center gap-6 bg-white/5 px-6 py-2 rounded-full border border-white/10 shadow-inner">
+                <button onClick={() => handleTabChange("post")} className={`font-bold transition-all hover:scale-105 ${activeTab === "post" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Dashboard</button>
+                <button onClick={() => handleTabChange("board")} className={`font-bold transition-all hover:scale-105 ${activeTab === "board" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Job Board</button>
+                <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>History</button>
+              </div>
+            )}
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
-            <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700/50 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none backdrop-blur-md">
-              <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
-            </button>
+            {isConnected && (
+              <button onClick={() => setIsMenuOpen(true)} className="p-2 border border-slate-700/50 rounded-full bg-slate-800/50 hover:bg-slate-700 block md:hidden focus:outline-none backdrop-blur-md">
+                <svg className="w-6 h-6 text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+              </button>
+            )}
           </div>
         </div>
       </nav>
@@ -591,17 +597,75 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-6 md:p-8 mt-4 w-full relative z-10">
+      <div className="max-w-5xl mx-auto p-6 md:p-8 mt-4 w-full relative z-10">
         {!isConnected ? (
-          <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-3xl border border-white/10 shadow-2xl mt-10">
-            <h2 className="text-4xl font-extrabold mb-4 text-white drop-shadow-lg">Welcome to TrustWork</h2>
-            <p className="text-slate-400 text-lg mb-8">AI-powered decentralized job platform on GenLayer.</p>
-            <div className="flex justify-center">
-              <ConnectButton />
+          // --- NEW: LANDING PAGE (Feature 6) ---
+          <div className="animate-in fade-in zoom-in duration-700">
+            <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-[3rem] border border-white/10 shadow-2xl mt-4 max-w-4xl mx-auto">
+              <div className="inline-block mb-4 px-4 py-1.5 rounded-full bg-blue-900/30 border border-blue-500/30 text-blue-400 font-bold text-sm tracking-widest uppercase">
+                The Adjudication Layer for the Agentic Economy
+              </div>
+              <h2 className="text-5xl md:text-7xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-emerald-400 drop-shadow-lg pb-2">
+                Welcome to TrustWork
+              </h2>
+              <p className="text-slate-300 text-lg md:text-xl mb-12 max-w-2xl mx-auto leading-relaxed">
+                A decentralized Web3 job marketplace powered by <strong>GenLayer AI</strong>. No middlemen, no disputes—just pure AI evaluation and secure payments.
+              </p>
+              
+              <h3 className="text-2xl font-bold text-white mb-8 border-b border-white/10 pb-4 inline-block">How TrustWork Works</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-14">
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
+                  <div className="w-14 h-14 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 mb-4 border border-blue-500/30 text-2xl font-bold">1</div>
+                  <h4 className="text-white font-bold mb-2">Post a Job</h4>
+                  <p className="text-sm text-slate-400">Describe the task in natural language and set the GEN reward.</p>
+                </div>
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
+                  <div className="w-14 h-14 bg-purple-500/20 rounded-full flex items-center justify-center text-purple-400 mb-4 border border-purple-500/30 text-2xl font-bold">2</div>
+                  <h4 className="text-white font-bold mb-2">Submit Work</h4>
+                  <p className="text-sm text-slate-400">Freelancers submit their work URL or text directly to the contract.</p>
+                </div>
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
+                  <div className="w-14 h-14 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-400 mb-4 border border-amber-500/30 text-2xl font-bold">3</div>
+                  <h4 className="text-white font-bold mb-2">AI Evaluates</h4>
+                  <p className="text-sm text-slate-400">GenLayer AI automatically checks the work against the criteria.</p>
+                </div>
+                <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
+                  <div className="w-14 h-14 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-4 border border-emerald-500/30 text-2xl font-bold">4</div>
+                  <h4 className="text-white font-bold mb-2">Get Paid</h4>
+                  <p className="text-sm text-slate-400">If approved, client confirms and funds are securely transferred.</p>
+                </div>
+              </div>
+
+              <div className="flex flex-col items-center justify-center gap-4">
+                <p className="text-slate-400 font-medium">Connect your wallet to enter the platform</p>
+                <div className="transform scale-110">
+                  <ConnectButton />
+                </div>
+              </div>
             </div>
           </div>
         ) : (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full">
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full max-w-4xl mx-auto">
+            
+            {/* --- NEW: PLATFORM STATS DASHBOARD (Feature 2) --- */}
+            {activeTab !== "post" && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                <div className="bg-[#0B1426]/60 backdrop-blur-xl p-5 rounded-3xl border border-white/5 shadow-lg flex flex-col justify-center">
+                  <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-1">Total GEN Paid</span>
+                  <span className="text-3xl font-extrabold text-emerald-400 drop-shadow-[0_0_10px_rgba(52,211,153,0.3)]">{totalGenPaid} GEN</span>
+                </div>
+                <div className="bg-[#0B1426]/60 backdrop-blur-xl p-5 rounded-3xl border border-white/5 shadow-lg flex flex-col justify-center">
+                  <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-1">Total Jobs Listed</span>
+                  <span className="text-3xl font-extrabold text-blue-400 drop-shadow-[0_0_10px_rgba(96,165,250,0.3)]">{totalJobsCount} Jobs</span>
+                </div>
+                <div className="bg-[#0B1426]/60 backdrop-blur-xl p-5 rounded-3xl border border-white/5 shadow-lg flex flex-col justify-center">
+                  <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-1">AI Approval Rate</span>
+                  <span className="text-3xl font-extrabold text-purple-400 drop-shadow-[0_0_10px_rgba(192,132,252,0.3)]">{aiApprovalRate}%</span>
+                </div>
+              </div>
+            )}
+
             {activeTab === "post" && (
               <div className="bg-[#0B1426]/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] w-full">
                 <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
@@ -728,6 +792,16 @@ export default function Home() {
                                   </button>
                                 </>
                               )
+                            )}
+
+                            {/* --- NEW: Share to X Button (Feature 7) --- */}
+                            {job.status === "OPEN" && !isMyJob(job) && (
+                              <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Looking for a freelancer on TrustWork! 🚀\n\nTask: ${job.desc}\nReward: 💰 ${job.price} GEN\n\nConnect wallet and apply now! #GenLayer #Web3 #TrustWork`)}`} 
+                                 target="_blank" rel="noreferrer" 
+                                 className="flex items-center justify-center gap-2 bg-black hover:bg-slate-900 text-white py-3 px-4 rounded-xl font-bold border border-white/10 transition-all hover:border-white/30">
+                                <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 22.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+                                Share on X
+                              </a>
                             )}
 
                             {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
