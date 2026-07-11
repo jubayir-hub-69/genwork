@@ -283,16 +283,21 @@ export default function Home() {
   const [jobPrice, setJobPrice] = useState("");
   const [jobCategory, setJobCategory] = useState(CATEGORIES[0]); 
   const [filterCategory, setFilterCategory] = useState("All"); 
-  const [searchQuery, setSearchQuery] = useState(""); // NEW: Search state
+  const [searchQuery, setSearchQuery] = useState(""); 
   
   const [jobs, setJobs] = useState<any[]>([]);
   const [clearedJobs, setClearedJobs] = useState<string[]>([]);
   const [workInputs, setWorkInputs] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
+  
+  // NEW: Chat states
+  const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
+  const [expandedChat, setExpandedChat] = useState<Record<string, boolean>>({});
+
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
-  const [nicknames, setNicknames] = useState<Record<string, string>>({}); // NEW: Nickname state
+  const [nicknames, setNicknames] = useState<Record<string, string>>({}); 
 
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -307,7 +312,6 @@ export default function Home() {
     const savedCleared = localStorage.getItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
     if (savedCleared) setClearedJobs(JSON.parse(savedCleared));
 
-    // NEW: Load nicknames
     const savedNicknames = localStorage.getItem("genwork_nicknames");
     if (savedNicknames) setNicknames(JSON.parse(savedNicknames));
   }, []);
@@ -319,7 +323,6 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  // NEW: Save nickname logic
   const handleSaveNickname = (addr: string, name: string) => {
     const updated = { ...nicknames, [addr.toLowerCase()]: name };
     setNicknames(updated);
@@ -405,6 +408,26 @@ export default function Home() {
       setTimeout(() => fetchJobs(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  // NEW: Send Chat Message logic
+  const handleSendMessage = async (jobId: string) => {
+    if (loadingAction) return;
+    const message = chatInputs[jobId];
+    if (!message || message.trim() === "") return showToast("Please type a message", "", "error");
+    if (!address) return showToast("Connect wallet first", "", "error");
+
+    try {
+      setLoadingAction(`chat-${jobId}`);
+      const tx = await sendGenLayerTransaction("send_message", [jobId, message, address]);
+      setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
+      showToast("Message sent to blockchain!", tx, "info");
+      setTimeout(() => fetchJobs(), 3000);
+    } catch (error: any) {
+      showToast(error.message || "Message failed to send", "", "error");
     } finally {
       setLoadingAction(null);
     }
@@ -511,7 +534,6 @@ export default function Home() {
     setIsMenuOpen(false);
   };
 
-  // NEW: Smart Address Display logic (uses nickname if available)
   const displayAddr = (addr: string) => {
     if (!addr) return "";
     const short = `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
@@ -546,7 +568,6 @@ export default function Home() {
   const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
   const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
 
-  // NEW: Updated Filter logic including Search Query
   const visibleJobs = jobs.filter(j => 
     !clearedJobs.includes(j.id) && 
     (filterCategory === "All" || j.category === filterCategory) &&
@@ -575,7 +596,6 @@ export default function Home() {
             <h3 className="text-xl font-bold text-white mb-1">GenWork Profile</h3>
             <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
             
-            {/* --- NEW: Nickname Input (Feature 3) --- */}
             <div className="mb-6">
               <input 
                 type="text" 
@@ -642,6 +662,17 @@ export default function Home() {
                 <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>History</button>
               </div>
             )}
+            
+            {/* --- NEW: VISIBLE PROFILE BUTTON --- */}
+            {isConnected && (
+              <button 
+                onClick={() => setSelectedProfile(address as string)}
+                className="hidden md:flex items-center gap-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 text-blue-300 px-4 py-2 rounded-full font-bold text-sm border border-blue-500/30 hover:bg-blue-600/30 transition-all shadow-md"
+              >
+                👤 My Profile
+              </button>
+            )}
+
             <div className="hidden md:block">
               <ConnectButton showBalance={false} />
             </div>
@@ -664,6 +695,15 @@ export default function Home() {
             </button>
           </div>
           <div className="flex flex-col gap-3">
+            {/* Mobile Profile Button */}
+            {isConnected && (
+              <button 
+                onClick={() => {setSelectedProfile(address as string); setIsMenuOpen(false);}}
+                className="p-4 rounded-xl text-left font-semibold border border-purple-500/30 bg-purple-600/10 text-purple-300 hover:bg-purple-600/20 transition-all flex items-center gap-2 mb-2"
+              >
+                👤 Set My Nickname
+              </button>
+            )}
             <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "post" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Dashboard</button>
             <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "board" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Job Board</button>
             <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "history" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>History</button>
@@ -774,7 +814,6 @@ export default function Home() {
                   <h2 className="text-3xl font-extrabold text-white drop-shadow-lg">Job Board</h2>
                   
                   <div className="flex flex-wrap items-center gap-3 w-full md:w-auto flex-1 md:justify-end">
-                    {/* --- NEW: Search Bar --- */}
                     <div className="relative w-full md:w-48">
                       <input 
                         type="text" 
@@ -808,6 +847,7 @@ export default function Home() {
                     visibleJobs.map((job) => {
                       const isRejectedMsg = job.ai_decision && job.ai_decision.toLowerCase().includes("reject");
                       const isUrl = job.work_data && job.work_data.startsWith("http");
+                      const jobMessages = job.messages || [];
 
                       return (
                         <div key={job.id} className={`bg-[#0B1426]/80 backdrop-blur-xl p-6 md:p-8 rounded-3xl border border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col md:flex-row justify-between items-start md:items-center hover:border-white/20 transition-all w-full overflow-hidden relative group`}>
@@ -883,9 +923,68 @@ export default function Home() {
                                 )}
                               </div>
                             )}
+
+                            {/* --- NEW: CHAT / DISCUSSION TOGGLE --- */}
+                            <div className="mt-4">
+                              <button 
+                                onClick={() => setExpandedChat(prev => ({...prev, [job.id]: !prev[job.id]}))}
+                                className="text-sm font-bold text-slate-400 hover:text-white flex items-center gap-2 transition-colors bg-white/5 px-3 py-1.5 rounded-lg border border-white/5"
+                              >
+                                💬 Discussion ({jobMessages.length}) {expandedChat[job.id] ? "▲" : "▼"}
+                              </button>
+
+                              {expandedChat[job.id] && (
+                                <div className="mt-3 bg-black/40 border border-white/10 rounded-2xl p-4 shadow-inner animate-in slide-in-from-top-2">
+                                  <div className="max-h-48 overflow-y-auto pr-2 space-y-3 mb-3 scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+                                    {jobMessages.length === 0 ? (
+                                      <p className="text-xs text-slate-500 text-center italic">No messages yet. Be the first to start the discussion!</p>
+                                    ) : (
+                                      jobMessages.map((msg: any, i: number) => {
+                                        const isMe = address && msg.sender.toLowerCase() === address.toLowerCase();
+                                        const isClient = msg.sender.toLowerCase() === job.client.toLowerCase();
+                                        const isFreelancer = job.freelancer && msg.sender.toLowerCase() === job.freelancer.toLowerCase();
+                                        
+                                        return (
+                                          <div key={i} className={`p-3 rounded-2xl max-w-[85%] ${isMe ? 'bg-blue-600/20 border-blue-500/30 ml-auto' : 'bg-slate-800/60 border-slate-700/50 mr-auto'} border`}>
+                                            <div className="flex justify-between items-center mb-1 gap-4">
+                                              <span className="text-[10px] font-bold text-slate-400">{displayAddr(msg.sender)}</span>
+                                              <div className="flex gap-1">
+                                                {isClient && <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 rounded font-bold uppercase border border-emerald-500/20">Client</span>}
+                                                {isFreelancer && <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 rounded font-bold uppercase border border-purple-500/20">Worker</span>}
+                                              </div>
+                                            </div>
+                                            <p className="text-sm text-slate-200 whitespace-pre-wrap">{msg.text}</p>
+                                          </div>
+                                        )
+                                      })
+                                    )}
+                                  </div>
+                                  
+                                  <div className="flex gap-2">
+                                    <input 
+                                      type="text" 
+                                      placeholder="Type your message..." 
+                                      className="flex-1 bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors"
+                                      value={chatInputs[job.id] || ""}
+                                      onChange={(e) => setChatInputs(prev => ({...prev, [job.id]: e.target.value}))}
+                                      onKeyDown={(e) => e.key === 'Enter' && handleSendMessage(job.id)}
+                                    />
+                                    <button 
+                                      onClick={() => handleSendMessage(job.id)}
+                                      disabled={loadingAction !== null}
+                                      className={`px-4 py-2 rounded-xl font-bold text-sm transition-colors ${loadingAction === 'chat-'+job.id ? 'bg-slate-700 text-slate-500' : 'bg-blue-600 text-white hover:bg-blue-500'}`}
+                                    >
+                                      {loadingAction === 'chat-'+job.id ? "..." : "Send"}
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                            {/* --- END CHAT TOGGLE --- */}
+
                           </div>
 
-                          <div className="w-full md:w-auto flex flex-col gap-3 md:min-w-[280px] shrink-0 z-10">
+                          <div className="w-full md:w-auto flex flex-col gap-3 md:min-w-[280px] shrink-0 z-10 mt-6 md:mt-0">
                             
                             {job.status === "OPEN" && (
                               isMyJob(job) ? (
