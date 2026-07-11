@@ -281,8 +281,8 @@ export default function Home() {
 
   const [jobDesc, setJobDesc] = useState("");
   const [jobPrice, setJobPrice] = useState("");
-  const [jobCategory, setJobCategory] = useState(CATEGORIES[0]); // NEW: Category
-  const [filterCategory, setFilterCategory] = useState("All"); // NEW: Filter
+  const [jobCategory, setJobCategory] = useState(CATEGORIES[0]); 
+  const [filterCategory, setFilterCategory] = useState("All"); 
   
   const [jobs, setJobs] = useState<any[]>([]);
   const [clearedJobs, setClearedJobs] = useState<string[]>([]);
@@ -290,7 +290,6 @@ export default function Home() {
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
-  // NEW: Profile Modal State
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
 
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -523,17 +522,14 @@ export default function Home() {
     }
   };
 
-  // --- STATS CALCULATION ---
   const totalJobsCount = jobs.length;
   const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
   const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED", "AI_REJECTED"].includes(j.status)).length;
   const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
   const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
 
-  // --- FILTER JOBS ---
   const visibleJobs = jobs.filter(j => !clearedJobs.includes(j.id) && (filterCategory === "All" || j.category === filterCategory));
 
-  // --- PROFILE STATS GENERATOR ---
   const getProfileStats = (addr: string) => {
     const posted = jobs.filter(j => j.client?.toLowerCase() === addr.toLowerCase());
     const worked = jobs.filter(j => j.freelancer?.toLowerCase() === addr.toLowerCase() && j.status === "COMPLETED");
@@ -545,7 +541,6 @@ export default function Home() {
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
       <AnimatedBackground />
 
-      {/* --- NEW: Public Profile Modal (Feature 3) --- */}
       {selectedProfile && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" onClick={() => setSelectedProfile(null)}>
           <div className="bg-[#0B1426]/95 border border-white/10 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
@@ -553,7 +548,7 @@ export default function Home() {
             <div className="w-20 h-20 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg">
               <span className="text-2xl font-bold text-white">👤</span>
             </div>
-            <h3 className="text-xl font-bold text-white mb-1">TrustWork Profile</h3>
+            <h3 className="text-xl font-bold text-white mb-1">GenWork Profile</h3>
             <p className="text-sm font-mono text-slate-400 mb-6 bg-black/30 py-1.5 rounded-lg border border-white/5">{selectedProfile}</p>
             
             <div className="grid grid-cols-2 gap-4 text-left">
@@ -599,7 +594,7 @@ export default function Home() {
               <path d="M50 15 L25 70 L45 58 L50 65 L55 58 L75 70 Z" fill="currentColor" />
               <polygon points="50,69 62,81 50,93 38,81" fill="currentColor" />
             </svg>
-            <h1 className="text-2xl font-extrabold tracking-wide text-white drop-shadow-md">TrustWork</h1>
+            <h1 className="text-2xl font-extrabold tracking-wide text-white drop-shadow-md">GenWork</h1>
           </div>
           
           <div className="flex items-center gap-4 md:gap-8">
@@ -650,13 +645,13 @@ export default function Home() {
                 The Adjudication Layer for the Agentic Economy
               </div>
               <h2 className="text-5xl md:text-7xl font-extrabold mb-6 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-purple-400 to-emerald-400 drop-shadow-lg pb-2">
-                Welcome to TrustWork
+                Welcome to GenWork
               </h2>
               <p className="text-slate-300 text-lg md:text-xl mb-12 max-w-2xl mx-auto leading-relaxed">
                 A decentralized Web3 job marketplace powered by <strong>GenLayer AI</strong>. No middlemen, no disputes—just pure AI evaluation and secure payments.
               </p>
               
-              <h3 className="text-2xl font-bold text-white mb-8 border-b border-white/10 pb-4 inline-block">How TrustWork Works</h3>
+              <h3 className="text-2xl font-bold text-white mb-8 border-b border-white/10 pb-4 inline-block">How GenWork Works</h3>
               
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-14">
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
@@ -713,7 +708,6 @@ export default function Home() {
               <div className="bg-[#0B1426]/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] w-full">
                 <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
                 <div className="space-y-6">
-                  {/* --- NEW: Category Dropdown (Feature 5) --- */}
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-bold text-slate-400 px-1">Job Category</label>
                     <select 
@@ -742,7 +736,6 @@ export default function Home() {
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                   <h2 className="text-3xl font-extrabold text-white drop-shadow-lg">Job Board</h2>
                   <div className="flex flex-wrap items-center gap-3">
-                    {/* --- NEW: Filter by Category (Feature 5) --- */}
                     <select 
                       className="bg-[#0B1426]/80 text-white px-4 py-2.5 rounded-full text-sm font-bold border border-white/10 shadow-lg outline-none cursor-pointer"
                       value={filterCategory}
@@ -830,7 +823,6 @@ export default function Home() {
                               <div className={`mt-4 p-4 rounded-xl border max-w-full ${isRejectedMsg ? 'bg-rose-950/40 border-rose-900/50' : 'bg-slate-900/60 border-slate-700/50 shadow-inner'}`}>
                                 <p className={`text-sm break-words leading-relaxed ${isRejectedMsg ? 'text-rose-300 font-medium' : 'text-slate-300'}`}>🤖 {job.ai_decision}</p>
                                 
-                                {/* --- NEW: Validator Consensus Badge (Feature 1) --- */}
                                 {["AI_APPROVED", "AI_REJECTED"].includes(job.status) && (
                                   <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2 text-xs font-bold text-slate-400">
                                     <span className="flex h-2 w-2 relative">
@@ -873,7 +865,7 @@ export default function Home() {
                             )}
 
                             {job.status === "OPEN" && !isMyJob(job) && (
-                              <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Looking for a freelancer on TrustWork! 🚀\n\nTask: ${job.desc}\nCategory: ${job.category}\nReward: 💰 ${job.price} GEN\n\nConnect wallet and apply now! #GenLayer #Web3 #TrustWork`)}`} 
+                              <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`Looking for a freelancer on GenWork! 🚀\n\nTask: ${job.desc}\nCategory: ${job.category}\nReward: 💰 ${job.price} GEN\n\nConnect wallet and apply now! #GenLayer #Web3 #GenWork`)}`} 
                                  target="_blank" rel="noreferrer" 
                                  className="flex items-center justify-center gap-2 bg-black hover:bg-slate-900 text-white py-3 px-4 rounded-xl font-bold border border-white/10 transition-all hover:border-white/30">
                                 <svg viewBox="0 0 24 24" className="w-4 h-4 fill-current"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 22.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
