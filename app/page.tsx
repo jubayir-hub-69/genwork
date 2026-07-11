@@ -332,7 +332,6 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  // NEW: Open Profile and setup Edit variables
   const openProfileModal = (addr: string) => {
     if (!addr) return;
     const formattedAddr = addr.toLowerCase();
@@ -342,7 +341,6 @@ export default function Home() {
     setIsEditingProfile(false);
   };
 
-  // NEW: Save Profile Settings
   const saveProfileData = () => {
     if (!selectedProfile) return;
     const addr = selectedProfile.toLowerCase();
@@ -592,9 +590,7 @@ export default function Home() {
     }
   };
 
-  // --- STRICTLY REAL DATA CALCULATION ---
   const totalJobsCount = jobs.length;
-  // Earned is calculated only from jobs with status COMPLETED
   const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
   const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED", "AI_REJECTED"].includes(j.status)).length;
   const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
@@ -608,7 +604,6 @@ export default function Home() {
   );
 
   const getProfileStats = (addr: string) => {
-    // 100% Real on-chain data check
     const posted = jobs.filter(j => j.client?.toLowerCase() === addr.toLowerCase());
     const worked = jobs.filter(j => j.freelancer?.toLowerCase() === addr.toLowerCase() && j.status === "COMPLETED");
     const earned = worked.reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
@@ -624,12 +619,17 @@ export default function Home() {
           <div className="bg-[#0B1426]/95 border border-white/10 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedProfile(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
             
-            <div className="w-24 h-24 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg overflow-hidden">
+            {/* Smart Avatar Image Rendering */}
+            <div className="w-24 h-24 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg overflow-hidden relative">
               {avatars[selectedProfile.toLowerCase()] ? (
-                <img src={avatars[selectedProfile.toLowerCase()]} alt="Profile" className="w-full h-full object-cover" />
-              ) : (
-                <span className="text-3xl font-bold text-white">👤</span>
-              )}
+                <img 
+                  src={avatars[selectedProfile.toLowerCase()]} 
+                  alt="Profile" 
+                  className="w-full h-full object-cover absolute inset-0 z-10" 
+                  onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                />
+              ) : null}
+              <span className="text-3xl font-bold text-white z-0">👤</span>
             </div>
             
             {!isEditingProfile ? (
@@ -654,7 +654,7 @@ export default function Home() {
                 />
                 <input 
                   type="text" 
-                  placeholder="Avatar URL (Image Link)" 
+                  placeholder="Direct Image Link (e.g., ends in .jpg or .png)" 
                   value={tempAvatar}
                   onChange={(e) => setTempAvatar(e.target.value)}
                   className="w-full p-3 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
@@ -1001,8 +1001,11 @@ export default function Home() {
                                         
                                         return (
                                           <div key={i} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
-                                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer" onClick={() => openProfileModal(msg.sender)}>
-                                              {msgAvatar ? <img src={msgAvatar} alt="av" className="w-full h-full object-cover" /> : <span className="text-[10px]">👤</span>}
+                                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer relative" onClick={() => openProfileModal(msg.sender)}>
+                                              {msgAvatar ? (
+                                                <img src={msgAvatar} alt="av" className="w-full h-full object-cover absolute inset-0 z-10" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                                              ) : null}
+                                              <span className="text-[10px] z-0">👤</span>
                                             </div>
                                             <div className={`p-3 rounded-2xl max-w-[85%] ${isMe ? 'bg-blue-600/20 border-blue-500/30' : 'bg-slate-800/60 border-slate-700/50'} border`}>
                                               <div className="flex justify-between items-center mb-1 gap-4">
