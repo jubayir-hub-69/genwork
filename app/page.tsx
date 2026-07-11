@@ -290,14 +290,20 @@ export default function Home() {
   const [workInputs, setWorkInputs] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
   
-  // NEW: Chat states
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
   const [expandedChat, setExpandedChat] = useState<Record<string, boolean>>({});
 
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
+  // Profile States
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [nicknames, setNicknames] = useState<Record<string, string>>({}); 
+  const [avatars, setAvatars] = useState<Record<string, string>>({}); 
+  
+  // Profile Edit States
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [tempName, setTempName] = useState("");
+  const [tempAvatar, setTempAvatar] = useState("");
 
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -314,6 +320,9 @@ export default function Home() {
 
     const savedNicknames = localStorage.getItem("genwork_nicknames");
     if (savedNicknames) setNicknames(JSON.parse(savedNicknames));
+
+    const savedAvatars = localStorage.getItem("genwork_avatars");
+    if (savedAvatars) setAvatars(JSON.parse(savedAvatars));
   }, []);
 
   const saveToHistory = (hash: string, action: string) => {
@@ -323,10 +332,32 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  const handleSaveNickname = (addr: string, name: string) => {
-    const updated = { ...nicknames, [addr.toLowerCase()]: name };
-    setNicknames(updated);
-    localStorage.setItem("genwork_nicknames", JSON.stringify(updated));
+  // NEW: Open Profile and setup Edit variables
+  const openProfileModal = (addr: string) => {
+    if (!addr) return;
+    const formattedAddr = addr.toLowerCase();
+    setSelectedProfile(addr);
+    setTempName(nicknames[formattedAddr] || "");
+    setTempAvatar(avatars[formattedAddr] || "");
+    setIsEditingProfile(false);
+  };
+
+  // NEW: Save Profile Settings
+  const saveProfileData = () => {
+    if (!selectedProfile) return;
+    const addr = selectedProfile.toLowerCase();
+    
+    const newNicks = { ...nicknames, [addr]: tempName };
+    const newAvatars = { ...avatars, [addr]: tempAvatar };
+    
+    setNicknames(newNicks);
+    setAvatars(newAvatars);
+    
+    localStorage.setItem("genwork_nicknames", JSON.stringify(newNicks));
+    localStorage.setItem("genwork_avatars", JSON.stringify(newAvatars));
+    
+    setIsEditingProfile(false);
+    showToast("Profile saved successfully!", "", "success");
   };
 
   const clearHistoryAndLocks = () => {
@@ -413,7 +444,6 @@ export default function Home() {
     }
   };
 
-  // NEW: Send Chat Message logic
   const handleSendMessage = async (jobId: string) => {
     if (loadingAction) return;
     const message = chatInputs[jobId];
@@ -562,7 +592,9 @@ export default function Home() {
     }
   };
 
+  // --- STRICTLY REAL DATA CALCULATION ---
   const totalJobsCount = jobs.length;
+  // Earned is calculated only from jobs with status COMPLETED
   const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
   const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED", "AI_REJECTED"].includes(j.status)).length;
   const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
@@ -576,6 +608,7 @@ export default function Home() {
   );
 
   const getProfileStats = (addr: string) => {
+    // 100% Real on-chain data check
     const posted = jobs.filter(j => j.client?.toLowerCase() === addr.toLowerCase());
     const worked = jobs.filter(j => j.freelancer?.toLowerCase() === addr.toLowerCase() && j.status === "COMPLETED");
     const earned = worked.reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
@@ -590,23 +623,47 @@ export default function Home() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-black/60 backdrop-blur-md" onClick={() => setSelectedProfile(null)}>
           <div className="bg-[#0B1426]/95 border border-white/10 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedProfile(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
-            <div className="w-20 h-20 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg">
-              <span className="text-2xl font-bold text-white">👤</span>
-            </div>
-            <h3 className="text-xl font-bold text-white mb-1">GenWork Profile</h3>
-            <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
             
-            <div className="mb-6">
-              <input 
-                type="text" 
-                placeholder="Set Nickname (Local)" 
-                maxLength={20}
-                value={nicknames[selectedProfile.toLowerCase()] || ""}
-                onChange={(e) => handleSaveNickname(selectedProfile, e.target.value)}
-                className="w-full p-2 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
-              />
-              <p className="text-[10px] text-slate-500 mt-1">Saves locally to your browser</p>
+            <div className="w-24 h-24 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg overflow-hidden">
+              {avatars[selectedProfile.toLowerCase()] ? (
+                <img src={avatars[selectedProfile.toLowerCase()]} alt="Profile" className="w-full h-full object-cover" />
+              ) : (
+                <span className="text-3xl font-bold text-white">👤</span>
+              )}
             </div>
+            
+            {!isEditingProfile ? (
+              <>
+                <h3 className="text-2xl font-extrabold text-white mb-1">{nicknames[selectedProfile.toLowerCase()] || "GenWork Profile"}</h3>
+                <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
+                <div className="mb-6">
+                  <button onClick={() => setIsEditingProfile(true)} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-full transition-colors border border-white/10">
+                    ✏️ Edit Profile Settings
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div className="mb-6 space-y-3 animate-in fade-in">
+                <input 
+                  type="text" 
+                  placeholder="Enter Nickname..." 
+                  maxLength={20}
+                  value={tempName}
+                  onChange={(e) => setTempName(e.target.value)}
+                  className="w-full p-3 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
+                />
+                <input 
+                  type="text" 
+                  placeholder="Avatar URL (Image Link)" 
+                  value={tempAvatar}
+                  onChange={(e) => setTempAvatar(e.target.value)}
+                  className="w-full p-3 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
+                />
+                <button onClick={saveProfileData} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors shadow-lg">
+                  💾 Save Profile
+                </button>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-4 text-left">
               <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
@@ -663,10 +720,9 @@ export default function Home() {
               </div>
             )}
             
-            {/* --- NEW: VISIBLE PROFILE BUTTON --- */}
             {isConnected && (
               <button 
-                onClick={() => setSelectedProfile(address as string)}
+                onClick={() => openProfileModal(address as string)}
                 className="hidden md:flex items-center gap-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 text-blue-300 px-4 py-2 rounded-full font-bold text-sm border border-blue-500/30 hover:bg-blue-600/30 transition-all shadow-md"
               >
                 👤 My Profile
@@ -695,13 +751,12 @@ export default function Home() {
             </button>
           </div>
           <div className="flex flex-col gap-3">
-            {/* Mobile Profile Button */}
             {isConnected && (
               <button 
-                onClick={() => {setSelectedProfile(address as string); setIsMenuOpen(false);}}
+                onClick={() => {openProfileModal(address as string); setIsMenuOpen(false);}}
                 className="p-4 rounded-xl text-left font-semibold border border-purple-500/30 bg-purple-600/10 text-purple-300 hover:bg-purple-600/20 transition-all flex items-center gap-2 mb-2"
               >
-                👤 Set My Nickname
+                👤 My Profile
               </button>
             )}
             <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "post" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Dashboard</button>
@@ -873,13 +928,13 @@ export default function Home() {
                               {job.client && (
                                 <p className="text-xs text-slate-400 flex items-center justify-between">
                                   <span className="font-semibold text-slate-500">Client</span> 
-                                  <span onClick={() => setSelectedProfile(job.client)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.client)}</span>
+                                  <span onClick={() => openProfileModal(job.client)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.client)}</span>
                                 </p>
                               )}
                               {job.freelancer && (
                                 <p className="text-xs text-slate-400 flex items-center justify-between">
                                   <span className="font-semibold text-slate-500">Freelancer</span> 
-                                  <span onClick={() => setSelectedProfile(job.freelancer)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.freelancer)}</span>
+                                  <span onClick={() => openProfileModal(job.freelancer)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.freelancer)}</span>
                                 </p>
                               )}
                               {job.work_data && (
@@ -924,7 +979,6 @@ export default function Home() {
                               </div>
                             )}
 
-                            {/* --- NEW: CHAT / DISCUSSION TOGGLE --- */}
                             <div className="mt-4">
                               <button 
                                 onClick={() => setExpandedChat(prev => ({...prev, [job.id]: !prev[job.id]}))}
@@ -943,17 +997,25 @@ export default function Home() {
                                         const isMe = address && msg.sender.toLowerCase() === address.toLowerCase();
                                         const isClient = msg.sender.toLowerCase() === job.client.toLowerCase();
                                         const isFreelancer = job.freelancer && msg.sender.toLowerCase() === job.freelancer.toLowerCase();
+                                        const msgAvatar = avatars[msg.sender.toLowerCase()];
                                         
                                         return (
-                                          <div key={i} className={`p-3 rounded-2xl max-w-[85%] ${isMe ? 'bg-blue-600/20 border-blue-500/30 ml-auto' : 'bg-slate-800/60 border-slate-700/50 mr-auto'} border`}>
-                                            <div className="flex justify-between items-center mb-1 gap-4">
-                                              <span className="text-[10px] font-bold text-slate-400">{displayAddr(msg.sender)}</span>
-                                              <div className="flex gap-1">
-                                                {isClient && <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 rounded font-bold uppercase border border-emerald-500/20">Client</span>}
-                                                {isFreelancer && <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 rounded font-bold uppercase border border-purple-500/20">Worker</span>}
-                                              </div>
+                                          <div key={i} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                                            <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-blue-500 to-purple-500 border border-white/10 overflow-hidden shrink-0 flex items-center justify-center cursor-pointer" onClick={() => openProfileModal(msg.sender)}>
+                                              {msgAvatar ? <img src={msgAvatar} alt="av" className="w-full h-full object-cover" /> : <span className="text-[10px]">👤</span>}
                                             </div>
-                                            <p className="text-sm text-slate-200 whitespace-pre-wrap">{msg.text}</p>
+                                            <div className={`p-3 rounded-2xl max-w-[85%] ${isMe ? 'bg-blue-600/20 border-blue-500/30' : 'bg-slate-800/60 border-slate-700/50'} border`}>
+                                              <div className="flex justify-between items-center mb-1 gap-4">
+                                                <span className="text-[10px] font-bold text-slate-400 cursor-pointer hover:text-blue-300 transition-colors" onClick={() => openProfileModal(msg.sender)}>
+                                                  {displayAddr(msg.sender)}
+                                                </span>
+                                                <div className="flex gap-1">
+                                                  {isClient && <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 rounded font-bold uppercase border border-emerald-500/20">Client</span>}
+                                                  {isFreelancer && <span className="text-[9px] bg-purple-500/20 text-purple-300 px-1.5 rounded font-bold uppercase border border-purple-500/20">Worker</span>}
+                                                </div>
+                                              </div>
+                                              <p className="text-sm text-slate-200 whitespace-pre-wrap">{msg.text}</p>
+                                            </div>
                                           </div>
                                         )
                                       })
@@ -980,7 +1042,6 @@ export default function Home() {
                                 </div>
                               )}
                             </div>
-                            {/* --- END CHAT TOGGLE --- */}
 
                           </div>
 
