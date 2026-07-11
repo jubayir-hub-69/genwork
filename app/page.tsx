@@ -283,6 +283,7 @@ export default function Home() {
   const [jobPrice, setJobPrice] = useState("");
   const [jobCategory, setJobCategory] = useState(CATEGORIES[0]); 
   const [filterCategory, setFilterCategory] = useState("All"); 
+  const [searchQuery, setSearchQuery] = useState(""); // NEW: Search state
   
   const [jobs, setJobs] = useState<any[]>([]);
   const [clearedJobs, setClearedJobs] = useState<string[]>([]);
@@ -291,6 +292,7 @@ export default function Home() {
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
+  const [nicknames, setNicknames] = useState<Record<string, string>>({}); // NEW: Nickname state
 
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -304,6 +306,10 @@ export default function Home() {
     
     const savedCleared = localStorage.getItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
     if (savedCleared) setClearedJobs(JSON.parse(savedCleared));
+
+    // NEW: Load nicknames
+    const savedNicknames = localStorage.getItem("genwork_nicknames");
+    if (savedNicknames) setNicknames(JSON.parse(savedNicknames));
   }, []);
 
   const saveToHistory = (hash: string, action: string) => {
@@ -311,6 +317,13 @@ export default function Home() {
     const updatedHistory = [newRecord, ...history];
     setHistory(updatedHistory);
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
+  };
+
+  // NEW: Save nickname logic
+  const handleSaveNickname = (addr: string, name: string) => {
+    const updated = { ...nicknames, [addr.toLowerCase()]: name };
+    setNicknames(updated);
+    localStorage.setItem("genwork_nicknames", JSON.stringify(updated));
   };
 
   const clearHistoryAndLocks = () => {
@@ -498,8 +511,13 @@ export default function Home() {
     setIsMenuOpen(false);
   };
 
-  const shortAddr = (addr: string) =>
-    addr ? `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}` : "";
+  // NEW: Smart Address Display logic (uses nickname if available)
+  const displayAddr = (addr: string) => {
+    if (!addr) return "";
+    const short = `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
+    const nick = nicknames[addr.toLowerCase()];
+    return nick ? `${nick} (${short})` : short;
+  };
 
   const isMyJob = (job: any) =>
     address && job.client?.toLowerCase() === address.toLowerCase();
@@ -528,7 +546,13 @@ export default function Home() {
   const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
   const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
 
-  const visibleJobs = jobs.filter(j => !clearedJobs.includes(j.id) && (filterCategory === "All" || j.category === filterCategory));
+  // NEW: Updated Filter logic including Search Query
+  const visibleJobs = jobs.filter(j => 
+    !clearedJobs.includes(j.id) && 
+    (filterCategory === "All" || j.category === filterCategory) &&
+    (j.desc.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     (j.work_data && j.work_data.toLowerCase().includes(searchQuery.toLowerCase())))
+  );
 
   const getProfileStats = (addr: string) => {
     const posted = jobs.filter(j => j.client?.toLowerCase() === addr.toLowerCase());
@@ -549,8 +573,21 @@ export default function Home() {
               <span className="text-2xl font-bold text-white">👤</span>
             </div>
             <h3 className="text-xl font-bold text-white mb-1">GenWork Profile</h3>
-            <p className="text-sm font-mono text-slate-400 mb-6 bg-black/30 py-1.5 rounded-lg border border-white/5">{selectedProfile}</p>
+            <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
             
+            {/* --- NEW: Nickname Input (Feature 3) --- */}
+            <div className="mb-6">
+              <input 
+                type="text" 
+                placeholder="Set Nickname (Local)" 
+                maxLength={20}
+                value={nicknames[selectedProfile.toLowerCase()] || ""}
+                onChange={(e) => handleSaveNickname(selectedProfile, e.target.value)}
+                className="w-full p-2 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
+              />
+              <p className="text-[10px] text-slate-500 mt-1">Saves locally to your browser</p>
+            </div>
+
             <div className="grid grid-cols-2 gap-4 text-left">
               <div className="bg-white/5 p-4 rounded-2xl border border-white/5">
                 <p className="text-xs text-slate-400 font-bold uppercase mb-1">Jobs Posted</p>
@@ -735,9 +772,21 @@ export default function Home() {
               <div className="w-full">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4">
                   <h2 className="text-3xl font-extrabold text-white drop-shadow-lg">Job Board</h2>
-                  <div className="flex flex-wrap items-center gap-3">
+                  
+                  <div className="flex flex-wrap items-center gap-3 w-full md:w-auto flex-1 md:justify-end">
+                    {/* --- NEW: Search Bar --- */}
+                    <div className="relative w-full md:w-48">
+                      <input 
+                        type="text" 
+                        placeholder="Search jobs..." 
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full bg-[#0B1426]/80 text-white px-4 py-2.5 rounded-full text-sm font-bold border border-white/10 shadow-lg outline-none placeholder:text-slate-500 focus:border-blue-500 transition-colors"
+                      />
+                    </div>
+
                     <select 
-                      className="bg-[#0B1426]/80 text-white px-4 py-2.5 rounded-full text-sm font-bold border border-white/10 shadow-lg outline-none cursor-pointer"
+                      className="bg-[#0B1426]/80 text-white px-4 py-2.5 rounded-full text-sm font-bold border border-white/10 shadow-lg outline-none cursor-pointer flex-1 md:flex-none"
                       value={filterCategory}
                       onChange={(e) => setFilterCategory(e.target.value)}
                     >
@@ -745,16 +794,16 @@ export default function Home() {
                       {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                     </select>
 
-                    <button onClick={handleClearCompleted} className="bg-emerald-950/40 text-emerald-400 px-4 py-2.5 rounded-full text-sm font-bold hover:bg-emerald-900/60 border border-emerald-900/50 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex items-center gap-2">
+                    <button onClick={handleClearCompleted} className="bg-emerald-950/40 text-emerald-400 px-4 py-2.5 rounded-full text-sm font-bold hover:bg-emerald-900/60 border border-emerald-900/50 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex items-center justify-center gap-2 flex-1 md:flex-none">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       Clear Completed
                     </button>
-                    <button onClick={() => fetchJobs()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md">↻ Refresh</button>
+                    <button onClick={() => fetchJobs()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex-1 md:flex-none">↻ Refresh</button>
                   </div>
                 </div>
                 <div className="grid gap-6 w-full">
                   {visibleJobs.length === 0 ? (
-                    <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-3xl border border-white/10 text-slate-400 shadow-xl">No active jobs to display right now.</div>
+                    <div className="text-center p-12 bg-[#0B1426]/70 backdrop-blur-xl rounded-3xl border border-white/10 text-slate-400 shadow-xl">No active jobs found. Try adjusting filters or search.</div>
                   ) : (
                     visibleJobs.map((job) => {
                       const isRejectedMsg = job.ai_decision && job.ai_decision.toLowerCase().includes("reject");
@@ -784,13 +833,13 @@ export default function Home() {
                               {job.client && (
                                 <p className="text-xs text-slate-400 flex items-center justify-between">
                                   <span className="font-semibold text-slate-500">Client</span> 
-                                  <span onClick={() => setSelectedProfile(job.client)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{shortAddr(job.client)}</span>
+                                  <span onClick={() => setSelectedProfile(job.client)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.client)}</span>
                                 </p>
                               )}
                               {job.freelancer && (
                                 <p className="text-xs text-slate-400 flex items-center justify-between">
                                   <span className="font-semibold text-slate-500">Freelancer</span> 
-                                  <span onClick={() => setSelectedProfile(job.freelancer)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{shortAddr(job.freelancer)}</span>
+                                  <span onClick={() => setSelectedProfile(job.freelancer)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.freelancer)}</span>
                                 </p>
                               )}
                               {job.work_data && (
