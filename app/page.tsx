@@ -297,13 +297,14 @@ export default function Home() {
 
   // Profile States
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
-  const [nicknames, setNicknames] = useState<Record<string, string>>({}); 
-  const [avatars, setAvatars] = useState<Record<string, string>>({}); 
+  const [globalProfiles, setGlobalProfiles] = useState<Record<string, any>>({}); 
   
   // Profile Edit States
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState("");
   const [tempAvatar, setTempAvatar] = useState("");
+
+  const [aboutSubTab, setAboutSubTab] = useState("genwork");
 
   const showToast = (message: string, tx: string, type: 'success' | 'error' | 'info' = 'info') => {
     if (toastTimeout.current) clearTimeout(toastTimeout.current);
@@ -317,12 +318,6 @@ export default function Home() {
     
     const savedCleared = localStorage.getItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
     if (savedCleared) setClearedJobs(JSON.parse(savedCleared));
-
-    const savedNicknames = localStorage.getItem("genwork_nicknames");
-    if (savedNicknames) setNicknames(JSON.parse(savedNicknames));
-
-    const savedAvatars = localStorage.getItem("genwork_avatars");
-    if (savedAvatars) setAvatars(JSON.parse(savedAvatars));
   }, []);
 
   const saveToHistory = (hash: string, action: string) => {
@@ -332,30 +327,63 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
+  const fetchJobsAndProfiles = useCallback(async () => {
+    try {
+      // Fetch Jobs
+      const jobsData = await genlayerClient.readContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: "get_all_jobs",
+        args: [],
+      });
+      if (jobsData) {
+        const parsedJobs = typeof jobsData === "string" ? JSON.parse(jobsData) : jobsData;
+        setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
+      }
+
+      // Fetch Profiles
+      const profilesData = await genlayerClient.readContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: "get_profiles",
+        args: [],
+      });
+      if (profilesData) {
+        setGlobalProfiles(typeof profilesData === "string" ? JSON.parse(profilesData) : profilesData);
+      }
+    } catch (error: any) {
+      console.error("Error fetching data:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJobsAndProfiles();
+  }, [fetchJobsAndProfiles]);
+
   const openProfileModal = (addr: string) => {
     if (!addr) return;
     const formattedAddr = addr.toLowerCase();
     setSelectedProfile(addr);
-    setTempName(nicknames[formattedAddr] || "");
-    setTempAvatar(avatars[formattedAddr] || "");
+    setTempName(globalProfiles[formattedAddr]?.nickname || "");
+    setTempAvatar(globalProfiles[formattedAddr]?.avatar || "");
     setIsEditingProfile(false);
   };
 
-  const saveProfileData = () => {
-    if (!selectedProfile) return;
-    const addr = selectedProfile.toLowerCase();
+  const saveProfileData = async () => {
+    if (!address) return showToast("Wallet not connected", "", "error");
     
-    const newNicks = { ...nicknames, [addr]: tempName };
-    const newAvatars = { ...avatars, [addr]: tempAvatar };
-    
-    setNicknames(newNicks);
-    setAvatars(newAvatars);
-    
-    localStorage.setItem("genwork_nicknames", JSON.stringify(newNicks));
-    localStorage.setItem("genwork_avatars", JSON.stringify(newAvatars));
-    
-    setIsEditingProfile(false);
-    showToast("Profile saved successfully!", "", "success");
+    try {
+      setLoadingAction("save-profile");
+      showToast("Saving profile to Blockchain...", "", "info");
+      
+      const tx = await sendGenLayerTransaction("update_profile", [address, tempName, tempAvatar]);
+      showToast("Profile globally updated!", tx, "success");
+      
+      setIsEditingProfile(false);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
+    } catch(err: any) {
+      showToast(err.message || "Failed to save profile", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
   };
 
   const clearHistoryAndLocks = () => {
@@ -365,26 +393,6 @@ export default function Home() {
     localStorage.removeItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`);
     showToast("Records & Hidden Jobs cleared successfully!", "", 'success');
   };
-
-  const fetchJobs = useCallback(async () => {
-    try {
-      const data = await genlayerClient.readContract({
-        address: CONTRACT_ADDRESS as `0x${string}`,
-        functionName: "get_all_jobs",
-        args: [],
-      });
-      if (data) {
-        const parsedJobs = typeof data === "string" ? JSON.parse(data) : data;
-        setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
-      }
-    } catch (error: any) {
-      console.error("Error fetching jobs:", error);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchJobs();
-  }, [fetchJobs]);
 
   const sendGenLayerTransaction = async (functionName: string, args: any[]) => {
     if (!address) throw new Error("Wallet not connected");
@@ -415,7 +423,7 @@ export default function Home() {
       setJobPrice("");
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted! Waiting for confirmation...", tx, "success");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -434,7 +442,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData, address]);
       saveToHistory(tx, `Submitted Work for AI Eval`);
       showToast("Work Submitted! Processing via AI...", tx, "info");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -453,7 +461,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("send_message", [jobId, message, address]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -486,7 +494,7 @@ export default function Home() {
         showToast("Job Approved, but Wallet Payment was cancelled. Please send manually.", "", "error");
       }
       
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Approval transaction failed", "", "error");
     } finally {
@@ -503,7 +511,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
       saveToHistory(tx, `Rejected Job #${jobId}`);
       showToast("Reject transaction processing...", tx, "error");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -522,7 +530,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted successfully!", tx, "info");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -539,7 +547,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("cancel_job", [jobId, address]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled!", tx, "info");
-      setTimeout(() => fetchJobs(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -562,10 +570,13 @@ export default function Home() {
     setIsMenuOpen(false);
   };
 
+  const getProfileNick = (addr: string) => globalProfiles[addr.toLowerCase()]?.nickname || "";
+  const getProfileAvatar = (addr: string) => globalProfiles[addr.toLowerCase()]?.avatar || "";
+
   const displayAddr = (addr: string) => {
     if (!addr) return "";
     const short = `${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}`;
-    const nick = nicknames[addr.toLowerCase()];
+    const nick = getProfileNick(addr);
     return nick ? `${nick} (${short})` : short;
   };
 
@@ -619,11 +630,10 @@ export default function Home() {
           <div className="bg-[#0B1426]/95 border border-white/10 p-8 rounded-3xl shadow-2xl max-w-sm w-full text-center relative animate-in zoom-in-95" onClick={e => e.stopPropagation()}>
             <button onClick={() => setSelectedProfile(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white">✕</button>
             
-            {/* Smart Avatar Image Rendering */}
             <div className="w-24 h-24 bg-gradient-to-tr from-blue-500 to-purple-500 rounded-full mx-auto mb-4 flex items-center justify-center border-4 border-[#0B1426] shadow-lg overflow-hidden relative">
-              {avatars[selectedProfile.toLowerCase()] ? (
+              {getProfileAvatar(selectedProfile) && !isEditingProfile ? (
                 <img 
-                  src={avatars[selectedProfile.toLowerCase()]} 
+                  src={getProfileAvatar(selectedProfile)} 
                   alt="Profile" 
                   className="w-full h-full object-cover absolute inset-0 z-10" 
                   onError={(e) => { e.currentTarget.style.display = 'none'; }}
@@ -634,12 +644,14 @@ export default function Home() {
             
             {!isEditingProfile ? (
               <>
-                <h3 className="text-2xl font-extrabold text-white mb-1">{nicknames[selectedProfile.toLowerCase()] || "GenWork Profile"}</h3>
+                <h3 className="text-2xl font-extrabold text-white mb-1">{getProfileNick(selectedProfile) || "GenWork Profile"}</h3>
                 <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
                 <div className="mb-6">
-                  <button onClick={() => setIsEditingProfile(true)} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-full transition-colors border border-white/10">
-                    ✏️ Edit Profile Settings
-                  </button>
+                  {address && selectedProfile.toLowerCase() === address.toLowerCase() && (
+                    <button onClick={() => setIsEditingProfile(true)} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-full transition-colors border border-white/10">
+                      ✏️ Edit Profile Settings
+                    </button>
+                  )}
                 </div>
               </>
             ) : (
@@ -659,8 +671,8 @@ export default function Home() {
                   onChange={(e) => setTempAvatar(e.target.value)}
                   className="w-full p-3 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600"
                 />
-                <button onClick={saveProfileData} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 rounded-xl transition-colors shadow-lg">
-                  💾 Save Profile
+                <button onClick={saveProfileData} disabled={loadingAction !== null} className={`w-full font-bold py-3 rounded-xl transition-colors shadow-lg ${loadingAction === 'save-profile' ? 'bg-slate-700 text-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-500 text-white'}`}>
+                  {loadingAction === 'save-profile' ? "Saving to Blockchain..." : "💾 Save Profile"}
                 </button>
               </div>
             )}
@@ -717,6 +729,7 @@ export default function Home() {
                 <button onClick={() => handleTabChange("post")} className={`font-bold transition-all hover:scale-105 ${activeTab === "post" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Dashboard</button>
                 <button onClick={() => handleTabChange("board")} className={`font-bold transition-all hover:scale-105 ${activeTab === "board" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>Job Board</button>
                 <button onClick={() => handleTabChange("history")} className={`font-bold transition-all hover:scale-105 ${activeTab === "history" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>History</button>
+                <button onClick={() => handleTabChange("about")} className={`font-bold transition-all hover:scale-105 ${activeTab === "about" ? "text-blue-400 drop-shadow-[0_0_8px_rgba(96,165,250,0.5)]" : "text-slate-400 hover:text-white"}`}>About</button>
               </div>
             )}
             
@@ -762,6 +775,7 @@ export default function Home() {
             <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "post" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Dashboard</button>
             <button onClick={() => handleTabChange("board")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "board" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Job Board</button>
             <button onClick={() => handleTabChange("history")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "history" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>History</button>
+            <button onClick={() => handleTabChange("about")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "about" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>About</button>
           </div>
           <div className="mt-auto pt-8 border-t border-white/10 block md:hidden">
             <ConnectButton showBalance={false} />
@@ -819,7 +833,8 @@ export default function Home() {
         ) : (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 w-full max-w-4xl mx-auto">
             
-            {activeTab !== "post" && (
+            {/* STATS DASHBOARD */}
+            {activeTab !== "post" && activeTab !== "about" && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
                 <div className="bg-[#0B1426]/60 backdrop-blur-xl p-5 rounded-3xl border border-white/5 shadow-lg flex flex-col justify-center">
                   <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-1">Total GEN Paid</span>
@@ -833,6 +848,80 @@ export default function Home() {
                   <span className="text-slate-400 text-sm font-semibold uppercase tracking-wider mb-1">AI Approval Rate</span>
                   <span className="text-3xl font-extrabold text-purple-400 drop-shadow-[0_0_10px_rgba(192,132,252,0.3)]">{aiApprovalRate}%</span>
                 </div>
+              </div>
+            )}
+
+            {/* ABOUT TAB */}
+            {activeTab === "about" && (
+              <div className="bg-[#0B1426]/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] w-full">
+                <div className="flex gap-4 mb-8 border-b border-white/10 pb-4">
+                  <button 
+                    onClick={() => setAboutSubTab("genwork")}
+                    className={`text-xl font-extrabold transition-colors ${aboutSubTab === "genwork" ? "text-blue-400" : "text-slate-500 hover:text-slate-300"}`}
+                  >
+                    About GenWork
+                  </button>
+                  <button 
+                    onClick={() => setAboutSubTab("genlayer")}
+                    className={`text-xl font-extrabold transition-colors ${aboutSubTab === "genlayer" ? "text-emerald-400" : "text-slate-500 hover:text-slate-300"}`}
+                  >
+                    About GenLayer
+                  </button>
+                </div>
+
+                {aboutSubTab === "genwork" && (
+                  <div className="space-y-6 animate-in fade-in">
+                    <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
+                      <h3 className="text-2xl font-bold text-white mb-4">What is GenWork?</h3>
+                      <p className="text-slate-300 leading-relaxed mb-4">
+                        GenWork is a revolutionary decentralized AI-powered Web3 job marketplace built natively on the GenLayer blockchain. It completely eliminates human middlemen and traditional escrow agents.
+                      </p>
+                      <p className="text-slate-300 leading-relaxed mb-4">
+                        Instead of relying on a centralized company to resolve disputes or approve work, GenWork utilizes GenLayer's <strong>Optimistic Democracy</strong> and LLM validators. When a freelancer submits their work, the blockchain's AI directly evaluates the submission against the client's criteria and makes an unbiased, instant decision to approve or reject the work.
+                      </p>
+                    </div>
+
+                    <div className="bg-black/30 p-6 rounded-2xl border border-white/10">
+                      <h3 className="text-lg font-bold text-purple-400 mb-4 uppercase tracking-widest">Build & Contact</h3>
+                      <p className="text-white font-bold mb-2">BUILD BY JUBAYIR69</p>
+                      <div className="space-y-3 mt-4">
+                        <a href="https://github.com/jubayir-hub-69" target="_blank" rel="noreferrer" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
+                          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+                          github.com/jubayir-hub-69
+                        </a>
+                        <p className="flex items-center gap-3 text-slate-300">
+                          <span className="text-xl">✈️</span> Telegram: JUBAYIR69
+                        </p>
+                        <a href="https://discordapp.com/users/775330417414635530" target="_blank" rel="noreferrer" className="flex items-center gap-3 text-slate-300 hover:text-white transition-colors">
+                          <svg className="w-5 h-5 fill-current" viewBox="0 0 127.14 96.36"><path d="M107.7,8.07A105.15,105.15,0,0,0,81.47,0a72.06,72.06,0,0,0-3.36,6.83A97.68,97.68,0,0,0,49,6.83,72.37,72.37,0,0,0,45.64,0,105.89,105.89,0,0,0,19.39,8.09C2.79,32.65-1.71,56.6.54,80.21h0A105.73,105.73,0,0,0,32.71,96.36,77.7,77.7,0,0,0,39.6,85.25a68.42,68.42,0,0,1-10.85-5.18c.91-.66,1.8-1.34,2.66-2a75.57,75.57,0,0,0,64.32,0c.87.71,1.76,1.39,2.66,2a68.68,68.68,0,0,1-10.87,5.19,77,77,0,0,0,6.89,11.1A105.25,105.25,0,0,0,126.6,80.22h0C129.24,52.84,122.09,29.11,107.7,8.07ZM42.45,65.69C36.18,65.69,31,60,31,53s5-12.74,11.43-12.74S54,46,53.89,53,48.84,65.69,42.45,65.69Zm42.24,0C78.41,65.69,73.31,60,73.31,53s5-12.74,11.43-12.74S96.1,46,96,53,91.08,65.69,84.69,65.69Z"/></svg>
+                          discordapp.com/users/775330417414635530
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {aboutSubTab === "genlayer" && (
+                  <div className="space-y-6 animate-in fade-in">
+                    <div className="bg-emerald-900/20 p-6 rounded-2xl border border-emerald-500/30">
+                      <h3 className="text-lg font-bold text-emerald-400 mb-4 uppercase tracking-widest">Information</h3>
+                      <div className="space-y-3">
+                        <a href="https://docs.genlayer.com/" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">📚 Docs: docs.genlayer.com</a>
+                        <a href="https://www.genlayer.com/blog" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">📰 Blog: genlayer.com/blog</a>
+                        <a href="https://chatgpt.com/g/g-ix5a9SoHm-deepthought-genlayer" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">🤖 Genlayer GPT: DeepThought GenLayer</a>
+                      </div>
+                    </div>
+
+                    <div className="bg-blue-900/20 p-6 rounded-2xl border border-blue-500/30">
+                      <h3 className="text-lg font-bold text-blue-400 mb-4 uppercase tracking-widest">Build on GenLayer</h3>
+                      <div className="space-y-3">
+                        <a href="https://github.com/yeagerai/genlayer-simulator" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">⚙️ Github: yeagerai/genlayer-simulator</a>
+                        <a href="https://portal.genlayer.foundation/#/builders" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">🏗️ GenLayer Builders: portal.genlayer.foundation</a>
+                        <a href="https://studio.genlayer.com/contracts" target="_blank" rel="noreferrer" className="block text-slate-300 hover:text-white hover:underline">💻 Studio: studio.genlayer.com</a>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -857,7 +946,7 @@ export default function Home() {
                     <input type="text" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={handlePriceChange} placeholder="e.g. 5.5" />
                   </div>
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
-                    {loadingAction === "post" ? "Processing..." : "Post Job to GenLayer"}
+                    {loadingAction === "post" ? "Processing..." : "Post Job to GenWork"}
                   </button>
                 </div>
               </div>
@@ -892,7 +981,7 @@ export default function Home() {
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
                       Clear Completed
                     </button>
-                    <button onClick={() => fetchJobs()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex-1 md:flex-none">↻ Refresh</button>
+                    <button onClick={() => fetchJobsAndProfiles()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex-1 md:flex-none">↻ Refresh</button>
                   </div>
                 </div>
                 <div className="grid gap-6 w-full">
@@ -997,7 +1086,7 @@ export default function Home() {
                                         const isMe = address && msg.sender.toLowerCase() === address.toLowerCase();
                                         const isClient = msg.sender.toLowerCase() === job.client.toLowerCase();
                                         const isFreelancer = job.freelancer && msg.sender.toLowerCase() === job.freelancer.toLowerCase();
-                                        const msgAvatar = avatars[msg.sender.toLowerCase()];
+                                        const msgAvatar = getProfileAvatar(msg.sender);
                                         
                                         return (
                                           <div key={i} className={`flex items-end gap-2 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
