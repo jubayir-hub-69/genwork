@@ -62,10 +62,10 @@ When a freelancer submits their work (URL or raw text), the AI evaluates it stri
 *   npm, yarn, or pnpm
 *   MetaMask Wallet configured with GenLayer Network
 
-### Installation
 
-1. **Clone the repository:**
-   ```bash
-   git clone [https://github.com/jubayir-hub-69/genwork.git](https://github.com/jubayir-hub-69/genwork.git)
-   cd genwork
-   
+   👨‍💻 Developer & Contact
+Built by JUBAYIR69
+🐙 GitHub: jubayir-hub-69
+✈️ Telegram: JUBAYIR69
+👾 Discord: discordapp.com/users/775330417414635530
+
