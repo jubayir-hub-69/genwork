@@ -63,9 +63,18 @@ When a freelancer submits their work (URL or raw text), the AI evaluates it stri
 *   MetaMask Wallet configured with GenLayer Network
 
 
-   👨‍💻 Developer & Contact
-Built by JUBAYIR69
-🐙 GitHub: jubayir-hub-69
-✈️ Telegram: JUBAYIR69
-👾 Discord: discordapp.com/users/775330417414635530
+## 👨‍💻 Developer & Contact
+
+<div align="center">
+  <p><b>Built with ❤️ by JUBAYIR69</b></p>
+  
+  <a href="https://github.com/jubayir-hub-69"><img src="https://img.shields.io/badge/GitHub-100000?style=for-the-badge&logo=github&logoColor=white" alt="GitHub" /></a>
+  <a href="https://t.me/JUBAYIR69"><img src="https://img.shields.io/badge/Telegram-2CA5E0?style=for-the-badge&logo=telegram&logoColor=white" alt="Telegram" /></a>
+  <a href="https://discordapp.com/users/775330417414635530"><img src="https://img.shields.io/badge/Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Discord" /></a>
+
+  <br/>
+  <br/>
+  <p><i>"Building the future of decentralized work, one prompt at a time."</i></p>
+</div>
+
 
