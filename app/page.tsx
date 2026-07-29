@@ -529,6 +529,26 @@ export default function Home() {
     }
   };
 
+  // -------------------------------------------------------------
+  // NEW FUNCTION: Added to handle Confirm Reject and Refund
+  // -------------------------------------------------------------
+  const handleRejectWork = async (jobId: string) => {
+    if (loadingAction) return;
+    if (!address) return showToast("Connect wallet first", "", "error");
+    
+    try {
+      setLoadingAction(`reject-${jobId}`);
+      const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
+      saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
+      showToast("Rejection confirmed & Escrow refunded!", tx, "info");
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
+    } catch (error: any) {
+      showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
   const handleCancelJob = async (jobId: string) => {
     if (loadingAction) return;
     if (!address) return showToast("Connect wallet first", "", "error");
@@ -1219,10 +1239,14 @@ export default function Home() {
 
                             {job.status === "AI_REJECTED" && (
                               isMyJob(job) ? (
-                                <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner relative overflow-hidden">
-                                  <svg className="w-8 h-8 text-rose-500 mb-1 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
-                                  <span className="text-[15px]">AI Rejected Work</span>
-                                  <span className="text-xs">Freelancer can appeal or abandon.</span>
+                                <div className="flex flex-col gap-3 w-full">
+                                  <div className="bg-slate-900/60 text-slate-400 py-3 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center shadow-inner">
+                                    <span className="text-[15px] text-rose-400">AI Rejected Work</span>
+                                    <span className="text-xs">Freelancer can appeal or abandon.</span>
+                                  </div>
+                                  <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-extrabold transition-all w-full text-sm ${loadingAction === 'reject-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500 shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:-translate-y-1'}`}>
+                                    {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Rejection & Get Refund"}
+                                  </button>
                                 </div>
                               ) : (
                                 <>
