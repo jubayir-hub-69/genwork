@@ -12,13 +12,6 @@ const genlayerClient = createClient({ chain: studionet });
 
 const CATEGORIES = ["Web3", "AI", "Design", "Writing", "Other"];
 
-const toWeiHex = (eth: string) => {
-  const [whole, fraction = ""] = eth.split(".");
-  const paddedFraction = fraction.padEnd(18, "0").slice(0, 18);
-  const weiString = whole + paddedFraction;
-  return "0x" + BigInt(weiString).toString(16);
-};
-
 // -------------------------------------------------------------
 // 🌌 Animated Background Component
 // -------------------------------------------------------------
@@ -295,14 +288,19 @@ export default function Home() {
 
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
-  // Profile States
+  // Profile & Balance States
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [globalProfiles, setGlobalProfiles] = useState<Record<string, any>>({}); 
+  const [globalBalances, setGlobalBalances] = useState<Record<string, number>>({}); 
   
   // Profile Edit States
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState("");
   const [tempAvatar, setTempAvatar] = useState("");
+
+  // Deposit/Withdraw States
+  const [depositAmount, setDepositAmount] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
 
   const [aboutSubTab, setAboutSubTab] = useState("genwork");
 
@@ -349,6 +347,16 @@ export default function Home() {
       if (profilesData) {
         setGlobalProfiles(typeof profilesData === "string" ? JSON.parse(profilesData) : profilesData);
       }
+
+      // Fetch Balances
+      const balancesData = await genlayerClient.readContract({
+        address: CONTRACT_ADDRESS as `0x${string}`,
+        functionName: "get_balances",
+        args: [],
+      });
+      if (balancesData) {
+        setGlobalBalances(typeof balancesData === "string" ? JSON.parse(balancesData) : balancesData);
+      }
     } catch (error: any) {
       console.error("Error fetching data:", error);
     }
@@ -358,12 +366,16 @@ export default function Home() {
     fetchJobsAndProfiles();
   }, [fetchJobsAndProfiles]);
 
+  const myBalance = address ? (globalBalances[address.toLowerCase()] || 0) : 0;
+
   const openProfileModal = (addr: string) => {
     if (!addr) return;
     const formattedAddr = addr.toLowerCase();
     setSelectedProfile(addr);
     setTempName(globalProfiles[formattedAddr]?.nickname || "");
     setTempAvatar(globalProfiles[formattedAddr]?.avatar || "");
+    setDepositAmount("");
+    setWithdrawAmount("");
     setIsEditingProfile(false);
   };
 
@@ -409,16 +421,45 @@ export default function Home() {
     return hash;
   };
 
+  const handleDeposit = async () => {
+    if (!address || !depositAmount || isNaN(Number(depositAmount))) return showToast("Enter a valid deposit amount", "", "error");
+    try {
+      setLoadingAction("deposit");
+      const tx = await sendGenLayerTransaction("deposit_funds", [Math.floor(Number(depositAmount)), address]);
+      setDepositAmount("");
+      showToast(`Deposited ${depositAmount} GEN successfully!`, tx, "success");
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
+    } catch(err:any) {
+      showToast(err.message || "Deposit Failed", "", "error");
+    } finally { setLoadingAction(null); }
+  };
+
+  const handleWithdraw = async () => {
+    if (!address || !withdrawAmount || isNaN(Number(withdrawAmount))) return showToast("Enter a valid withdraw amount", "", "error");
+    try {
+      setLoadingAction("withdraw");
+      const tx = await sendGenLayerTransaction("withdraw_funds", [Math.floor(Number(withdrawAmount)), address]);
+      setWithdrawAmount("");
+      showToast(`Withdrew ${withdrawAmount} GEN successfully!`, tx, "success");
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
+    } catch(err:any) {
+      showToast(err.message || "Withdraw Failed", "", "error");
+    } finally { setLoadingAction(null); }
+  };
+
   const handlePostJob = async () => {
     if (loadingAction) return;
     if (!jobDesc || !jobPrice) return showToast("Please fill all fields", "", "error");
     if (isNaN(Number(jobPrice)) || Number(jobPrice) <= 0) return showToast("Enter a valid price", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
     
+    const priceInt = Math.floor(Number(jobPrice));
+    if (myBalance < priceInt) return showToast("Insufficient Platform Balance. Please deposit GEN first.", "", "error");
+
     try {
       setLoadingAction("post");
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobPrice.toString(), jobCategory, address]);
-      saveToHistory(tx, `Posted Job [${jobCategory}] for ${jobPrice} GEN`);
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceInt, jobCategory, address]);
+      saveToHistory(tx, `Posted Job [${jobCategory}] for ${priceInt} GEN`);
       setJobDesc("");
       setJobPrice("");
       setJobCategory(CATEGORIES[0]);
@@ -434,14 +475,14 @@ export default function Home() {
   const handleSubmitWork = async (jobId: string) => {
     if (loadingAction) return;
     const workData = workInputs[jobId];
-    if (!workData) return showToast("Please paste URL or type text first", "", "error");
+    if (!workData || !workData.startsWith("http")) return showToast("Please paste a valid URL (http/https)", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
     
     try {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData, address]);
-      saveToHistory(tx, `Submitted Work for AI Eval`);
-      showToast("Work Submitted! Processing via AI...", tx, "info");
+      saveToHistory(tx, `Submitted Evidence URL for Job #${jobId}`);
+      showToast("Work URL Submitted! AI is now evaluating...", tx, "info");
       setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
@@ -469,56 +510,6 @@ export default function Home() {
     }
   };
 
-  const handleApproveWork = async (job: any) => {
-    if (loadingAction) return;
-    if (!address) return showToast("Connect wallet first", "", "error");
-    
-    try {
-      setLoadingAction(`approve-${job.id}`);
-      showToast("Confirming approval on GenLayer...", "", "info");
-      const tx = await sendGenLayerTransaction("approve_work", [job.id, address]);
-      saveToHistory(tx, `Approved Job #${job.id}`);
-      showToast("Job Completed! Now processing payment...", tx, "success");
-      
-      const provider = (window as any).ethereum;
-      const hexValue = toWeiHex(job.price);
-      
-      try {
-        const paymentTx = await provider.request({
-          method: 'eth_sendTransaction',
-          params: [{ from: address, to: job.freelancer, value: hexValue }],
-        });
-        saveToHistory(paymentTx, `Paid ${job.price} GEN`);
-        showToast("Payment sent successfully!", paymentTx, "success");
-      } catch (err) {
-        showToast("Job Approved, but Wallet Payment was cancelled. Please send manually.", "", "error");
-      }
-      
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
-    } catch (error: any) {
-      showToast(error.message || "Approval transaction failed", "", "error");
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
-  const handleRejectWork = async (jobId: string) => {
-    if (loadingAction) return;
-    if (!address) return showToast("Connect wallet first", "", "error");
-    
-    try {
-      setLoadingAction(`reject-${jobId}`);
-      const tx = await sendGenLayerTransaction("reject_work", [jobId, address]);
-      saveToHistory(tx, `Rejected Job #${jobId}`);
-      showToast("Reject transaction processing...", tx, "error");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
-    } catch (error: any) {
-      showToast(error.message || "Transaction failed", "", "error");
-    } finally {
-      setLoadingAction(null);
-    }
-  };
-
   const handleAppeal = async (jobId: string) => {
     if (loadingAction) return;
     const reason = appealReasons[jobId];
@@ -529,7 +520,7 @@ export default function Home() {
       setLoadingAction(`appeal-${jobId}`);
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
-      showToast("Appeal submitted successfully!", tx, "info");
+      showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
       setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
@@ -546,7 +537,7 @@ export default function Home() {
       setLoadingAction(`cancel-${jobId}`);
       const tx = await sendGenLayerTransaction("cancel_job", [jobId, address]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
-      showToast("Job Cancelled!", tx, "info");
+      showToast("Job Cancelled & Funds Refunded to Balance!", tx, "info");
       setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
@@ -556,13 +547,13 @@ export default function Home() {
   };
 
   const handleClearCompleted = () => {
-    const completedIds = jobs.filter(j => j.status === "COMPLETED" || j.status === "CANCELLED").map(j => j.id);
-    if (completedIds.length === 0) return showToast("No completed or cancelled jobs to clear.", "", "info");
+    const completedIds = jobs.filter(j => ["AI_APPROVED", "APPEAL_APPROVED", "CANCELLED", "APPEAL_REJECTED"].includes(j.status)).map(j => j.id);
+    if (completedIds.length === 0) return showToast("No resolved jobs to clear.", "", "info");
     
     const newCleared = [...new Set([...clearedJobs, ...completedIds])];
     setClearedJobs(newCleared);
     localStorage.setItem(`genwork_cleared_jobs_${CONTRACT_ADDRESS}`, JSON.stringify(newCleared));
-    showToast("Completed/Cancelled jobs cleared from view!", "", "success");
+    showToast("Resolved jobs cleared from view!", "", "success");
   };
 
   const handleTabChange = (tab: string) => {
@@ -585,12 +576,23 @@ export default function Home() {
 
   const getStatusStyle = (status: string) => {
     switch(status) {
-      case "COMPLETED": return "bg-gradient-to-r from-green-500/20 to-emerald-600/20 text-green-400 border-green-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]";
-      case "AI_APPROVED": return "bg-gradient-to-r from-emerald-500/20 to-teal-600/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]";
-      case "AI_REJECTED": return "bg-gradient-to-r from-rose-500/20 to-red-600/20 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(225,29,72,0.2)]";
-      case "OPEN": return "bg-gradient-to-r from-blue-500/20 to-indigo-600/20 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
-      case "CANCELLED": return "bg-gradient-to-r from-slate-500/20 to-gray-600/20 text-slate-400 border-slate-500/30 shadow-[0_0_10px_rgba(148,163,184,0.2)]";
-      default: return "bg-gradient-to-r from-amber-500/20 to-orange-600/20 text-amber-400 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+      case "COMPLETED": // legacy compatibility
+      case "AI_APPROVED":
+      case "APPEAL_APPROVED": 
+        return "bg-gradient-to-r from-emerald-500/20 to-teal-600/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]";
+      case "AI_REJECTED": 
+      case "APPEAL_REJECTED":
+      case "FAILED_EVALUATION":
+        return "bg-gradient-to-r from-rose-500/20 to-red-600/20 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(225,29,72,0.2)]";
+      case "EVALUATING":
+      case "APPEAL_IN_PROGRESS":
+        return "bg-gradient-to-r from-amber-500/20 to-orange-600/20 text-amber-400 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]";
+      case "OPEN": 
+        return "bg-gradient-to-r from-blue-500/20 to-indigo-600/20 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
+      case "CANCELLED": 
+        return "bg-gradient-to-r from-slate-500/20 to-gray-600/20 text-slate-400 border-slate-500/30 shadow-[0_0_10px_rgba(148,163,184,0.2)]";
+      default: 
+        return "bg-gradient-to-r from-gray-500/20 to-gray-600/20 text-gray-400 border-gray-500/30";
     }
   };
 
@@ -602,9 +604,10 @@ export default function Home() {
   };
 
   const totalJobsCount = jobs.length;
-  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
-  const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED", "AI_REJECTED"].includes(j.status)).length;
-  const approvedJobs = jobs.filter(j => ["AI_APPROVED", "COMPLETED"].includes(j.status)).length;
+  // Calculate total GEN paid based on successful AI approvals
+  const totalGenPaid = jobs.filter(j => ["AI_APPROVED", "APPEAL_APPROVED", "COMPLETED"].includes(j.status)).reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
+  const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "AI_REJECTED", "APPEAL_APPROVED", "APPEAL_REJECTED", "COMPLETED"].includes(j.status)).length;
+  const approvedJobs = jobs.filter(j => ["AI_APPROVED", "APPEAL_APPROVED", "COMPLETED"].includes(j.status)).length;
   const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
 
   const visibleJobs = jobs.filter(j => 
@@ -616,7 +619,7 @@ export default function Home() {
 
   const getProfileStats = (addr: string) => {
     const posted = jobs.filter(j => j.client?.toLowerCase() === addr.toLowerCase());
-    const worked = jobs.filter(j => j.freelancer?.toLowerCase() === addr.toLowerCase() && j.status === "COMPLETED");
+    const worked = jobs.filter(j => j.freelancer?.toLowerCase() === addr.toLowerCase() && ["AI_APPROVED", "APPEAL_APPROVED", "COMPLETED"].includes(j.status));
     const earned = worked.reduce((acc, curr) => acc + parseFloat(curr.price || "0"), 0).toFixed(2);
     return { posted: posted.length, worked: worked.length, earned };
   };
@@ -646,10 +649,26 @@ export default function Home() {
               <>
                 <h3 className="text-2xl font-extrabold text-white mb-1">{getProfileNick(selectedProfile) || "GenWork Profile"}</h3>
                 <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
+                
+                {address && selectedProfile.toLowerCase() === address.toLowerCase() && (
+                  <div className="bg-white/5 p-4 rounded-2xl border border-white/5 mb-6 text-center animate-in fade-in">
+                    <p className="text-xs text-slate-400 font-bold uppercase mb-1">Platform Balance</p>
+                    <p className="text-3xl font-extrabold text-amber-400 drop-shadow-md mb-4">{myBalance} GEN</p>
+                    <div className="flex gap-2">
+                      <input type="number" placeholder="Amt" value={depositAmount} onChange={e => setDepositAmount(e.target.value)} className="w-1/3 p-2 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-amber-500" />
+                      <button onClick={handleDeposit} disabled={loadingAction !== null} className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2 rounded-xl text-sm transition-colors shadow-lg">Deposit</button>
+                    </div>
+                    <div className="flex gap-2 mt-2">
+                      <input type="number" placeholder="Amt" value={withdrawAmount} onChange={e => setWithdrawAmount(e.target.value)} className="w-1/3 p-2 bg-black/50 border border-white/10 rounded-xl text-white text-center text-sm focus:outline-none focus:border-amber-500" />
+                      <button onClick={handleWithdraw} disabled={loadingAction !== null} className="flex-1 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 rounded-xl text-sm transition-colors shadow-lg">Withdraw</button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="mb-6">
                   {address && selectedProfile.toLowerCase() === address.toLowerCase() && (
                     <button onClick={() => setIsEditingProfile(true)} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-full transition-colors border border-white/10">
-                      ✏️ Edit Profile Settings
+                      ✏️ Edit Profile Info
                     </button>
                   )}
                 </div>
@@ -738,7 +757,7 @@ export default function Home() {
                 onClick={() => openProfileModal(address as string)}
                 className="hidden md:flex items-center gap-2 bg-gradient-to-r from-blue-600/20 to-purple-600/20 text-blue-300 px-4 py-2 rounded-full font-bold text-sm border border-blue-500/30 hover:bg-blue-600/30 transition-all shadow-md"
               >
-                👤 My Profile
+                👤 Profile ({myBalance} GEN)
               </button>
             )}
 
@@ -767,9 +786,10 @@ export default function Home() {
             {isConnected && (
               <button 
                 onClick={() => {openProfileModal(address as string); setIsMenuOpen(false);}}
-                className="p-4 rounded-xl text-left font-semibold border border-purple-500/30 bg-purple-600/10 text-purple-300 hover:bg-purple-600/20 transition-all flex items-center gap-2 mb-2"
+                className="p-4 rounded-xl text-left font-semibold border border-purple-500/30 bg-purple-600/10 text-purple-300 hover:bg-purple-600/20 transition-all flex items-center justify-between gap-2 mb-2"
               >
-                👤 My Profile
+                <span>👤 Profile</span>
+                <span className="text-xs bg-purple-900/50 px-2 py-1 rounded-md">{myBalance} GEN</span>
               </button>
             )}
             <button onClick={() => handleTabChange("post")} className={`p-4 rounded-xl text-left font-semibold border transition-all ${activeTab === "post" ? "bg-blue-600/20 border-blue-500/50 text-white shadow-lg" : "border-transparent text-slate-400 hover:bg-white/5"}`}>Dashboard</button>
@@ -794,7 +814,7 @@ export default function Home() {
                 Welcome to GenWork
               </h2>
               <p className="text-slate-300 text-lg md:text-xl mb-12 max-w-2xl mx-auto leading-relaxed">
-                A decentralized Web3 job marketplace powered by <strong>GenLayer AI</strong>. No middlemen, no disputes—just pure AI evaluation and secure payments.
+                A decentralized Web3 job marketplace powered by <strong>GenLayer AI</strong>. No middlemen, no disputes—just pure AI evaluation and secure Escrow payments.
               </p>
               
               <h3 className="text-2xl font-bold text-white mb-8 border-b border-white/10 pb-4 inline-block">How GenWork Works</h3>
@@ -803,22 +823,22 @@ export default function Home() {
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
                   <div className="w-14 h-14 bg-blue-500/20 rounded-full flex items-center justify-center text-blue-400 mb-4 border border-blue-500/30 text-2xl font-bold">1</div>
                   <h4 className="text-white font-bold mb-2">Post a Job</h4>
-                  <p className="text-sm text-slate-400">Describe the task in natural language and set the GEN reward.</p>
+                  <p className="text-sm text-slate-400">Describe the task in natural language and lock GEN in Escrow.</p>
                 </div>
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
                   <div className="w-14 h-14 bg-purple-500/20 rounded-full flex items-center justify-center text-purple-400 mb-4 border border-purple-500/30 text-2xl font-bold">2</div>
-                  <h4 className="text-white font-bold mb-2">Submit Work</h4>
-                  <p className="text-sm text-slate-400">Freelancers submit their work URL or text directly to the contract.</p>
+                  <h4 className="text-white font-bold mb-2">Submit Link</h4>
+                  <p className="text-sm text-slate-400">Freelancers submit their Work URL directly to the contract.</p>
                 </div>
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
                   <div className="w-14 h-14 bg-amber-500/20 rounded-full flex items-center justify-center text-amber-400 mb-4 border border-amber-500/30 text-2xl font-bold">3</div>
-                  <h4 className="text-white font-bold mb-2">AI Evaluates</h4>
-                  <p className="text-sm text-slate-400">GenLayer AI automatically checks the work against the criteria.</p>
+                  <h4 className="text-white font-bold mb-2">AI Fetches Data</h4>
+                  <p className="text-sm text-slate-400">GenLayer AI automatically reads the URL and evaluates the work.</p>
                 </div>
                 <div className="bg-white/5 p-6 rounded-3xl border border-white/10 flex flex-col items-center text-center hover:bg-white/10 transition-colors">
                   <div className="w-14 h-14 bg-emerald-500/20 rounded-full flex items-center justify-center text-emerald-400 mb-4 border border-emerald-500/30 text-2xl font-bold">4</div>
-                  <h4 className="text-white font-bold mb-2">Get Paid</h4>
-                  <p className="text-sm text-slate-400">If approved, client confirms and funds are securely transferred.</p>
+                  <h4 className="text-white font-bold mb-2">Instant Pay</h4>
+                  <p className="text-sm text-slate-400">If approved, the Smart Contract natively releases the Escrow funds.</p>
                 </div>
               </div>
 
@@ -877,7 +897,7 @@ export default function Home() {
                         GenWork is a revolutionary decentralized AI-powered Web3 job marketplace built natively on the GenLayer blockchain. It completely eliminates human middlemen and traditional escrow agents.
                       </p>
                       <p className="text-slate-300 leading-relaxed mb-4">
-                        Instead of relying on a centralized company to resolve disputes or approve work, GenWork utilizes GenLayer's <strong>Optimistic Democracy</strong> and LLM validators. When a freelancer submits their work, the blockchain's AI directly evaluates the submission against the client's criteria and makes an unbiased, instant decision to approve or reject the work.
+                        Instead of relying on a centralized company to resolve disputes or approve work, GenWork utilizes GenLayer's <strong>Optimistic Democracy</strong> and LLM validators. When a freelancer submits their work URL, the AI physically fetches the link, evaluates the submission against the client's criteria, and makes an unbiased, instant decision to release or refund the Escrow locked funds.
                       </p>
                     </div>
 
@@ -927,7 +947,14 @@ export default function Home() {
 
             {activeTab === "post" && (
               <div className="bg-[#0B1426]/80 backdrop-blur-xl p-8 md:p-10 rounded-3xl border border-white/10 shadow-[0_0_40px_rgba(0,0,0,0.5)] w-full">
-                <h2 className="text-3xl font-extrabold text-white mb-8">Post a New Job</h2>
+                <div className="flex justify-between items-center mb-8">
+                  <h2 className="text-3xl font-extrabold text-white">Post a New Job</h2>
+                  <div className="hidden md:flex flex-col items-end">
+                    <span className="text-xs text-slate-400 uppercase font-bold">Your Balance</span>
+                    <span className="text-lg font-bold text-amber-400">{myBalance} GEN</span>
+                  </div>
+                </div>
+
                 <div className="space-y-6">
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-bold text-slate-400 px-1">Job Category</label>
@@ -941,12 +968,17 @@ export default function Home() {
                   </div>
                   
                   <textarea className="w-full p-5 bg-[#060c18]/80 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-blue-500 resize-none transition-colors shadow-inner" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
-                  <div className="flex items-center bg-[#060c18]/80 border border-white/10 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors shadow-inner">
-                    <span className="px-5 text-slate-400 font-bold bg-white/5 border-r border-white/10 py-4 whitespace-nowrap">Price (GEN)</span>
-                    <input type="text" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={handlePriceChange} placeholder="e.g. 5.5" />
+                  
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-slate-400 px-1">Escrow Reward (Integer)</label>
+                    <div className="flex items-center bg-[#060c18]/80 border border-white/10 rounded-2xl overflow-hidden focus-within:border-blue-500 transition-colors shadow-inner">
+                      <span className="px-5 text-slate-400 font-bold bg-white/5 border-r border-white/10 py-4 whitespace-nowrap">Price (GEN)</span>
+                      <input type="text" className="w-full p-4 bg-transparent text-white focus:outline-none" value={jobPrice} onChange={handlePriceChange} placeholder="e.g. 5" />
+                    </div>
                   </div>
+
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
-                    {loadingAction === "post" ? "Processing..." : "Post Job to GenWork"}
+                    {loadingAction === "post" ? "Processing..." : "Lock Escrow & Post Job"}
                   </button>
                 </div>
               </div>
@@ -979,7 +1011,7 @@ export default function Home() {
 
                     <button onClick={handleClearCompleted} className="bg-emerald-950/40 text-emerald-400 px-4 py-2.5 rounded-full text-sm font-bold hover:bg-emerald-900/60 border border-emerald-900/50 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex items-center justify-center gap-2 flex-1 md:flex-none">
                       <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                      Clear Completed
+                      Clear Resolved
                     </button>
                     <button onClick={() => fetchJobsAndProfiles()} className="bg-white/10 text-white px-5 py-2.5 rounded-full text-sm font-bold hover:bg-white/20 border border-white/10 transition-all shadow-lg hover:scale-105 active:scale-95 backdrop-blur-md flex-1 md:flex-none">↻ Refresh</button>
                   </div>
@@ -990,7 +1022,6 @@ export default function Home() {
                   ) : (
                     visibleJobs.map((job) => {
                       const isRejectedMsg = job.ai_decision && job.ai_decision.toLowerCase().includes("reject");
-                      const isUrl = job.work_data && job.work_data.startsWith("http");
                       const jobMessages = job.messages || [];
 
                       return (
@@ -999,7 +1030,7 @@ export default function Home() {
                           <div className="mb-6 md:mb-0 flex-1 pr-4 min-w-0 w-full z-10">
                             <div className="flex flex-wrap items-center gap-3 mb-4">
                               <span className="bg-blue-900/40 text-blue-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-blue-500/30 whitespace-nowrap shadow-sm">JOB #{job.id}</span>
-                              <span className="bg-purple-900/40 text-purple-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-purple-500/30 whitespace-nowrap shadow-sm">💰 {job.price} GEN</span>
+                              <span className="bg-purple-900/40 text-purple-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-purple-500/30 whitespace-nowrap shadow-sm">🔒 ESCROW: {job.price} GEN</span>
                               {job.category && (
                                 <span className="bg-slate-800 text-slate-300 text-xs font-extrabold px-3 py-1.5 rounded-lg border border-slate-600 whitespace-nowrap shadow-sm">🏷️ {job.category}</span>
                               )}
@@ -1028,16 +1059,10 @@ export default function Home() {
                               )}
                               {job.work_data && (
                                 <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
-                                  <span className="font-semibold text-slate-500">Submitted Work:</span> 
-                                  {isUrl ? (
-                                    <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
-                                      {job.work_data}
-                                    </a>
-                                  ) : (
-                                    <div className="bg-black/30 p-3 rounded-lg border border-white/5 text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap mt-1">
-                                      {job.work_data}
-                                    </div>
-                                  )}
+                                  <span className="font-semibold text-slate-500">Submitted Evidence URL:</span> 
+                                  <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
+                                    {job.work_data}
+                                  </a>
                                 </div>
                               )}
                             </div>
@@ -1045,10 +1070,10 @@ export default function Home() {
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-semibold text-slate-300">Status:</span>
                               <span className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest border ${getStatusStyle(job.status)} flex items-center gap-1.5`}>
-                                {job.status !== "COMPLETED" && job.status !== "CANCELLED" && (
+                                {["OPEN", "EVALUATING", "APPEAL_IN_PROGRESS"].includes(job.status) && (
                                   <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
                                 )}
-                                {job.status.replace('_', ' ')}
+                                {job.status.replace(/_/g, ' ')}
                               </span>
                             </div>
                             
@@ -1056,13 +1081,13 @@ export default function Home() {
                               <div className={`mt-4 p-4 rounded-xl border max-w-full ${isRejectedMsg ? 'bg-rose-950/40 border-rose-900/50' : 'bg-slate-900/60 border-slate-700/50 shadow-inner'}`}>
                                 <p className={`text-sm break-words leading-relaxed ${isRejectedMsg ? 'text-rose-300 font-medium' : 'text-slate-300'}`}>🤖 {job.ai_decision}</p>
                                 
-                                {["AI_APPROVED", "AI_REJECTED"].includes(job.status) && (
+                                {["AI_APPROVED", "AI_REJECTED", "APPEAL_APPROVED", "APPEAL_REJECTED"].includes(job.status) && (
                                   <div className="mt-3 pt-3 border-t border-white/5 flex items-center gap-2 text-xs font-bold text-slate-400">
                                     <span className="flex h-2 w-2 relative">
                                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
                                       <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
                                     </span>
-                                    🛡️ GenLayer Consensus: AI Validated (Optimistic)
+                                    🛡️ GenLayer Consensus: AI Evaluated Web Evidence
                                   </div>
                                 )}
                               </div>
@@ -1152,9 +1177,10 @@ export default function Home() {
                                 </div>
                               ) : (
                                 <>
-                                  <textarea 
-                                    placeholder="Paste URL OR Type text here..." 
-                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors resize-y min-h-[100px]" 
+                                  <input 
+                                    type="url"
+                                    placeholder="Paste Web Link (https://...)" 
+                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors" 
                                     value={workInputs[job.id] || ""} 
                                     onChange={(e) => setWorkInputs((prev) => ({ ...prev, [job.id]: e.target.value }))} 
                                   />
@@ -1174,33 +1200,33 @@ export default function Home() {
                               </a>
                             )}
 
-                            {["SUBMITTED", "AI_APPROVED", "APPEALED"].includes(job.status) && (
-                              isMyJob(job) ? (
-                                <div className="flex flex-col gap-3 w-full">
-                                  <button onClick={() => handleApproveWork(job)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'approve-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-[0_0_20px_rgba(5,150,105,0.4)] hover:-translate-y-1'}`}>
-                                    {loadingAction === `approve-${job.id}` ? "Processing..." : `Approve & Pay ${job.price} GEN`}
-                                  </button>
-                                  <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold border transition-all w-full ${loadingAction === 'reject-'+job.id ? 'bg-transparent text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-transparent text-rose-400 border-rose-900/50 hover:bg-rose-950/50'}`}>
-                                    {loadingAction === `reject-${job.id}` ? "Rejecting..." : "Manual Reject"}
-                                  </button>
-                                </div>
-                              ) : (
-                                <div className="bg-amber-950/40 text-amber-400 py-5 px-4 rounded-2xl font-bold text-center border border-amber-700/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_20px_rgba(217,119,6,0.15)]">
-                                  <svg className="w-8 h-8 animate-pulse text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                  <span className="text-[15px]">Awaiting Client Approval</span>
-                                  <span className="text-xs font-medium text-amber-500/70 bg-amber-950/50 px-3 py-1 rounded-full mt-1 border border-amber-900/50">Reward Locked: {job.price} GEN</span>
-                                </div>
-                              )
+                            {["EVALUATING", "APPEAL_IN_PROGRESS"].includes(job.status) && (
+                              <div className="bg-amber-950/40 text-amber-400 py-6 px-4 rounded-2xl font-bold text-center border border-amber-700/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_20px_rgba(217,119,6,0.15)]">
+                                <svg className="w-8 h-8 animate-spin-slow text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span className="text-[15px]">Consensus in Progress...</span>
+                                <span className="text-xs font-medium text-amber-500/70 bg-amber-950/50 px-3 py-1 rounded-full mt-1 border border-amber-900/50">Please wait for AI judgment</span>
+                              </div>
+                            )}
+
+                            {["AI_APPROVED", "APPEAL_APPROVED", "COMPLETED"].includes(job.status) && (
+                              <div className="bg-emerald-950/40 text-emerald-400 py-6 px-4 rounded-2xl font-bold text-center border border-emerald-800/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.15)] relative overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-tr from-emerald-600/10 to-transparent"></div>
+                                <svg className="w-10 h-10 text-emerald-500 mb-1 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                <span className="text-lg relative z-10">Escrow Released</span>
+                                <span className="text-sm text-emerald-300/80 font-medium relative z-10">{job.price} GEN Native Transfer</span>
+                              </div>
                             )}
 
                             {job.status === "AI_REJECTED" && (
                               isMyJob(job) ? (
-                                <button onClick={() => handleRejectWork(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'reject-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500 shadow-[0_0_20px_rgba(225,29,72,0.4)] hover:-translate-y-1'}`}>
-                                  {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Reject & Re-open"}
-                                </button>
+                                <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner relative overflow-hidden">
+                                  <svg className="w-8 h-8 text-rose-500 mb-1 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                  <span className="text-[15px]">AI Rejected Work</span>
+                                  <span className="text-xs">Freelancer can appeal or abandon.</span>
+                                </div>
                               ) : (
                                 <>
-                                  <input type="text" placeholder="Reason for appeal..." className="p-4 bg-black/40 border border-rose-900/50 rounded-xl text-white focus:outline-none focus:border-rose-500 w-full shadow-inner" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
+                                  <input type="text" placeholder="Argument for Supreme AI..." className="p-4 bg-black/40 border border-rose-900/50 rounded-xl text-white focus:outline-none focus:border-rose-500 w-full shadow-inner text-sm" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
                                   <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'appeal-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500 shadow-[0_0_20px_rgba(225,29,72,0.3)] hover:-translate-y-1'}`}>
                                     {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal to AI"}
                                   </button>
@@ -1208,12 +1234,24 @@ export default function Home() {
                               )
                             )}
 
-                            {job.status === "COMPLETED" && (
-                              <div className="bg-emerald-950/40 text-emerald-400 py-6 px-4 rounded-2xl font-bold text-center border border-emerald-800/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_30px_rgba(16,185,129,0.15)] relative overflow-hidden">
-                                <div className="absolute inset-0 bg-gradient-to-tr from-emerald-600/10 to-transparent"></div>
-                                <svg className="w-10 h-10 text-emerald-500 mb-1 drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <span className="text-lg relative z-10">Payment Delivered</span>
-                                <span className="text-sm text-emerald-300/80 font-medium relative z-10">{job.price} GEN Sent to Wallet</span>
+                            {job.status === "FAILED_EVALUATION" && (
+                              isMyJob(job) ? (
+                                <button onClick={() => handleCancelJob(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-bold border transition-all w-full ${loadingAction === 'cancel-'+job.id ? 'bg-transparent text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-rose-950/80 text-rose-400 border-rose-900 hover:bg-rose-900 shadow-sm'}`}>
+                                  {loadingAction === `cancel-${job.id}` ? "Cancelling..." : "Cancel & Refund Escrow"}
+                                </button>
+                              ) : (
+                                <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner">
+                                  <span className="text-[15px]">AI Error</span>
+                                  <span className="text-xs">Client can now cancel the job.</span>
+                                </div>
+                              )
+                            )}
+
+                            {job.status === "APPEAL_REJECTED" && (
+                              <div className="bg-rose-950/40 text-rose-400 py-6 px-4 rounded-2xl font-bold text-center border border-rose-800/50 flex flex-col items-center justify-center gap-2 shadow-inner relative overflow-hidden">
+                                <svg className="w-8 h-8 text-rose-500 mb-1 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                <span className="text-[15px]">Appeal Lost</span>
+                                <span className="text-xs text-rose-300/80 font-medium">Funds refunded to Client</span>
                               </div>
                             )}
 
@@ -1221,6 +1259,7 @@ export default function Home() {
                               <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner relative overflow-hidden">
                                 <svg className="w-10 h-10 text-slate-500 mb-1 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
                                 <span className="text-lg">Job Cancelled</span>
+                                <span className="text-xs">Funds refunded to Client</span>
                               </div>
                             )}
                           </div>
