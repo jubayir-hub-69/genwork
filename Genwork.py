@@ -13,9 +13,11 @@ class GenWork(gl.Contract):
         self.profiles_data = "{}"
         self.balances_data = "{}"
 
-    # --- ESCROW & FUNDS FLOW ---
+    # --- ESCROW & FUNDS FLOW (SECURED) ---
     @gl.public.write
     def deposit_funds(self, amount: int, caller: str) -> None:
+        if amount <= 0:
+            raise Exception("Amount must be greater than zero.")
         balances = json.loads(self.balances_data)
         user = caller.lower()
         balances[user] = balances.get(user, 0) + amount
@@ -23,6 +25,8 @@ class GenWork(gl.Contract):
 
     @gl.public.write
     def withdraw_funds(self, amount: int, caller: str) -> None:
+        if amount <= 0:
+            raise Exception("Amount must be greater than zero.")
         balances = json.loads(self.balances_data)
         user = caller.lower()
         if balances.get(user, 0) >= amount:
@@ -34,6 +38,9 @@ class GenWork(gl.Contract):
     # --- JOB WORKFLOW ---
     @gl.public.write
     def post_job(self, desc: str, price: int, category: str, client: str) -> None:
+        if price <= 0:
+            raise Exception("Price must be greater than zero.")
+            
         balances = json.loads(self.balances_data)
         client_lower = client.lower()
         
@@ -172,7 +179,6 @@ class GenWork(gl.Contract):
         jobs[idx] = job
         self.jobs_data = json.dumps(jobs)
 
-    # ---> NEW FUNCTION ADDED TO FIX THE FUND LOCK BUG <---
     @gl.public.write
     def reject_work(self, job_id: str, caller: str) -> None:
         jobs = json.loads(self.jobs_data)
@@ -180,7 +186,6 @@ class GenWork(gl.Contract):
         if idx < 0 or idx >= len(jobs): return
         job = jobs[idx]
         
-        # Only client can finalize the rejection to get their refund
         if job["client"].lower() == caller.lower() and job["status"] == "AI_REJECTED":
             job["status"] = "CANCELLED"
             balances = json.loads(self.balances_data)
