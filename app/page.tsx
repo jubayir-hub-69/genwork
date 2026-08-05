@@ -322,6 +322,7 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
+  // VERCEL STRICT TYPESCRIPT ERROR FIXED HERE
   const fetchJobsAndProfiles = useCallback(async () => {
     try {
       const jobsData = await genlayerClient.readContract({
@@ -330,9 +331,9 @@ export default function Home() {
         args: [],
       });
       if (jobsData) {
-        let parsedJobs = jobsData;
+        let parsedJobs: any = jobsData;
         if (typeof jobsData === "string") {
-            try { parsedJobs = JSON.parse(jobsData); } catch (e) {}
+            try { parsedJobs = JSON.parse(jobsData); } catch (e: any) {}
         }
         setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
       }
@@ -343,11 +344,11 @@ export default function Home() {
         args: [],
       });
       if (profilesData) {
-        let parsedProfiles = profilesData;
+        let parsedProfiles: any = profilesData;
         if (typeof profilesData === "string") {
-            try { parsedProfiles = JSON.parse(profilesData); } catch (e) {}
+            try { parsedProfiles = JSON.parse(profilesData); } catch (e: any) {}
         }
-        setGlobalProfiles(parsedProfiles);
+        setGlobalProfiles(parsedProfiles as Record<string, any>);
       }
     } catch (error: any) {
       console.error("Error fetching data:", error);
@@ -367,7 +368,6 @@ export default function Home() {
     setIsEditingProfile(false);
   };
 
-  // NATIVE SMART CONTRACT CALLER
   const sendGenLayerTransaction = async (functionName: string, args: any[], value: bigint = BigInt(0)) => {
     if (!address) throw new Error("Wallet not connected");
     const client = createClient({
@@ -412,7 +412,6 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // PERFECTED: Exact 2 arguments matching the ABI and Python contract + value
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
@@ -826,7 +825,7 @@ export default function Home() {
                   </div>
 
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
-                    {loadingAction === "post" ? "Processing..." : "Lock GEN & Post Job"}
+                    {loadingAction === "post" ? "Please sign transaction in wallet..." : "Lock GEN & Post Job"}
                   </button>
                 </div>
               </div>
