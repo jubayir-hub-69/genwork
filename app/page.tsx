@@ -13,18 +13,13 @@ const genlayerClient = createClient({ chain: studionet });
 
 const CATEGORIES = ["Web3", "AI", "Design", "Writing", "Other"];
 
-// -------------------------------------------------------------
-// 🌌 Animated Background Component
-// -------------------------------------------------------------
 const AnimatedBackground = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-
     let w: number, h: number, dpr: number, cx: number, cy: number, bgGradient: CanvasGradient;
     let nodes: any[] = [];
     let pulses: any[] = [];
@@ -32,21 +27,12 @@ const AnimatedBackground = () => {
     let nextPulseAt = 1100;
     let startTime: number | null = null;
     let animId: number;
-
-    const COLORS = {
-      accent: [17, 15, 255],
-      lilac: [188, 162, 255],
-      grey: [202, 202, 202],
-      white: [255, 255, 255],
-      indigo: [40, 43, 93]
-    };
-
+    const COLORS = { accent: [17, 15, 255], lilac: [188, 162, 255], grey: [202, 202, 202], white: [255, 255, 255], indigo: [40, 43, 93] };
     const rgba = (c: number[], a: number) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
     const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
     const lerpColor = (c1: number[], c2: number[], t: number) => [lerp(c1[0], c2[0], t), lerp(c1[1], c2[1], t), lerp(c1[2], c2[2], t)];
     const easeInOutCubic = (t: number) => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
     const dist = (x1: number, y1: number, x2: number, y2: number) => Math.hypot(x1 - x2, y1 - y2);
-
     const mouse = { x: 0, y: 0, active: false };
 
     const resize = () => {
@@ -58,16 +44,12 @@ const AnimatedBackground = () => {
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-
-      cx = w / 2;
-      cy = h / 2;
-
+      cx = w / 2; cy = h / 2;
       const radius = Math.max(w, h) * 0.75;
       bgGradient = ctx.createRadialGradient(cx, cy, 0, cx, cy, radius);
       bgGradient.addColorStop(0, "#0d0d16");
       bgGradient.addColorStop(0.45, "#08080b");
       bgGradient.addColorStop(1, "#000000");
-
       initNodes();
     };
 
@@ -77,17 +59,7 @@ const AnimatedBackground = () => {
       nodes = [];
       for (let i = 0; i < count; i++) {
         const depth = 0.45 + Math.random() * 0.65;
-        nodes.push({
-          x: Math.random() * w,
-          y: Math.random() * h,
-          vx: (Math.random() - 0.5) * 0.18 * depth,
-          vy: (Math.random() - 0.5) * 0.18 * depth,
-          r: (1.1 + Math.random() * 1.6) * depth,
-          depth: depth,
-          baseAlpha: 0.42 + 0.5 * depth,
-          boost: 0,
-          rx: 0, ry: 0
-        });
+        nodes.push({ x: Math.random() * w, y: Math.random() * h, vx: (Math.random() - 0.5) * 0.18 * depth, vy: (Math.random() - 0.5) * 0.18 * depth, r: (1.1 + Math.random() * 1.6) * depth, depth: depth, baseAlpha: 0.42 + 0.5 * depth, boost: 0, rx: 0, ry: 0 });
       }
     };
 
@@ -108,39 +80,22 @@ const AnimatedBackground = () => {
         const idx2 = chosen[i];
         const node = nodes[idx2];
         const delay = i * 130;
-        pulses.push({
-          nodeIdx: idx2,
-          x0: node.x, y0: node.y,
-          start: now + delay,
-          activateStart: now + delay - 260,
-          duration: 900 + Math.random() * 260,
-          color: Math.random() < 0.5 ? COLORS.accent : COLORS.lilac,
-          arrived: false
-        });
+        pulses.push({ nodeIdx: idx2, x0: node.x, y0: node.y, start: now + delay, activateStart: now + delay - 260, duration: 900 + Math.random() * 260, color: Math.random() < 0.5 ? COLORS.accent : COLORS.lilac, arrived: false });
       }
     };
 
     const drawFrame = (now: number) => {
-      ctx.fillStyle = bgGradient;
-      ctx.fillRect(0, 0, w, h);
-
+      ctx.fillStyle = bgGradient; ctx.fillRect(0, 0, w, h);
       for (let i = 0; i < nodes.length; i++) {
         const n = nodes[i];
         n.x += n.vx; n.y += n.vy;
         if (n.x < -30) n.x = w + 30; else if (n.x > w + 30) n.x = -30;
         if (n.y < -30) n.y = h + 30; else if (n.y > h + 30) n.y = -30;
-        
         n.rx = n.x; n.ry = n.y;
         if (mouse.active) {
-          const dx = n.x - mouse.x;
-          const dy = n.y - mouse.y;
-          const d0 = Math.hypot(dx, dy);
+          const dx = n.x - mouse.x; const dy = n.y - mouse.y; const d0 = Math.hypot(dx, dy);
           const influence = 150;
-          if (d0 < influence && d0 > 0.01) {
-            const f = (1 - d0 / influence) * 16;
-            n.rx += (dx / d0) * f;
-            n.ry += (dy / d0) * f;
-          }
+          if (d0 < influence && d0 > 0.01) { const f = (1 - d0 / influence) * 16; n.rx += (dx / d0) * f; n.ry += (dy / d0) * f; }
         }
         n.boost *= 0.92;
       }
@@ -150,9 +105,7 @@ const AnimatedBackground = () => {
         if (now >= pl.activateStart && now < pl.start) {
           const ramp = (now - pl.activateStart) / (pl.start - pl.activateStart);
           nodes[pl.nodeIdx].boost = Math.max(nodes[pl.nodeIdx].boost, ramp);
-        } else if (now >= pl.start && !pl.arrived) {
-          nodes[pl.nodeIdx].boost = 1;
-        }
+        } else if (now >= pl.start && !pl.arrived) { nodes[pl.nodeIdx].boost = 1; }
       }
 
       const maxDist = Math.min(190, Math.max(110, Math.min(w, h) * 0.14));
@@ -167,10 +120,7 @@ const AnimatedBackground = () => {
             const boostMix = Math.max(na.boost, nb.boost);
             const col = boostMix > 0.05 ? lerpColor(COLORS.indigo, COLORS.lilac, boostMix) : lerpColor(COLORS.indigo, COLORS.accent, 0.2);
             ctx.strokeStyle = rgba(col, alpha * (0.55 + 0.7 * boostMix));
-            ctx.beginPath();
-            ctx.moveTo(na.rx, na.ry);
-            ctx.lineTo(nb.rx, nb.ry);
-            ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(na.rx, na.ry); ctx.lineTo(nb.rx, nb.ry); ctx.stroke();
           }
         }
       }
@@ -179,10 +129,7 @@ const AnimatedBackground = () => {
         const nn = nodes[ni];
         const nalpha = Math.min(1, nn.baseAlpha + nn.boost * 0.6);
         const ncol = nn.boost > 0.05 ? lerpColor(COLORS.grey, COLORS.white, nn.boost) : COLORS.grey;
-        ctx.beginPath();
-        ctx.fillStyle = rgba(ncol, nalpha);
-        ctx.arc(nn.rx, nn.ry, nn.r * (1 + nn.boost * 0.8), 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.fillStyle = rgba(ncol, nalpha); ctx.arc(nn.rx, nn.ry, nn.r * (1 + nn.boost * 0.8), 0, Math.PI * 2); ctx.fill();
       }
 
       for (let pi = pulses.length - 1; pi >= 0; pi--) {
@@ -193,18 +140,11 @@ const AnimatedBackground = () => {
         const tail = 5;
         for (let s = tail; s >= 0; s--) {
           const tt = Math.max(0, eased - s * 0.045);
-          const x = lerp(p.x0, cx, tt);
-          const y = lerp(p.y0, cy, tt);
+          const x = lerp(p.x0, cx, tt); const y = lerp(p.y0, cy, tt);
           const a2 = (1 - s / tail) * 0.9;
-          ctx.beginPath();
-          ctx.fillStyle = rgba(p.color, a2 * 0.85);
-          ctx.arc(x, y, Math.max(0.6, 2.6 * (1 - s / (tail + 2))), 0, Math.PI * 2);
-          ctx.fill();
+          ctx.beginPath(); ctx.fillStyle = rgba(p.color, a2 * 0.85); ctx.arc(x, y, Math.max(0.6, 2.6 * (1 - s / (tail + 2))), 0, Math.PI * 2); ctx.fill();
         }
-        if (t2 >= 1 && !p.arrived) {
-          p.arrived = true;
-          rings.push({ start: now, duration: 700, color: p.color });
-        }
+        if (t2 >= 1 && !p.arrived) { p.arrived = true; rings.push({ start: now, duration: 700, color: p.color }); }
         if (t2 >= 1) pulses.splice(pi, 1);
       }
 
@@ -214,35 +154,20 @@ const AnimatedBackground = () => {
         if (t3 >= 1) { rings.splice(ri, 1); continue; }
         const radius2 = lerp(4, 92, t3);
         const ralpha = (1 - t3) * 0.55;
-        ctx.beginPath();
-        ctx.strokeStyle = rgba(rg.color, ralpha);
-        ctx.lineWidth = 1.4;
-        ctx.arc(cx, cy, radius2, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.beginPath(); ctx.strokeStyle = rgba(rg.color, ralpha); ctx.lineWidth = 1.4; ctx.arc(cx, cy, radius2, 0, Math.PI * 2); ctx.stroke();
       }
     };
 
     const step = (now: number) => {
       if (!startTime) startTime = now;
       const t = now - startTime;
-      if (t > nextPulseAt) {
-        spawnConsensusEvent(now);
-        nextPulseAt = t + 2600 + Math.random() * 2200;
-      }
+      if (t > nextPulseAt) { spawnConsensusEvent(now); nextPulseAt = t + 2600 + Math.random() * 2200; }
       drawFrame(now);
       animId = requestAnimationFrame(step);
     };
 
-    const handlePointerMove = (e: PointerEvent) => {
-      const rect = canvas.getBoundingClientRect();
-      mouse.x = e.clientX - rect.left;
-      mouse.y = e.clientY - rect.top;
-      mouse.active = true;
-    };
-    
-    const handlePointerLeave = () => {
-      mouse.active = false;
-    };
+    const handlePointerMove = (e: PointerEvent) => { const rect = canvas.getBoundingClientRect(); mouse.x = e.clientX - rect.left; mouse.y = e.clientY - rect.top; mouse.active = true; };
+    const handlePointerLeave = () => { mouse.active = false; };
 
     window.addEventListener("resize", resize);
     window.addEventListener("pointermove", handlePointerMove);
@@ -252,10 +177,7 @@ const AnimatedBackground = () => {
     animId = requestAnimationFrame(step);
 
     return () => {
-      window.removeEventListener("resize", resize);
-      window.removeEventListener("pointermove", handlePointerMove);
-      window.removeEventListener("pointerleave", handlePointerLeave);
-      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize); window.removeEventListener("pointermove", handlePointerMove); window.removeEventListener("pointerleave", handlePointerLeave); cancelAnimationFrame(animId);
     };
   }, []);
 
@@ -292,11 +214,8 @@ export default function Home() {
 
   const [history, setHistory] = useState<{ hash: string; action: string; time: string }[]>([]);
 
-  // Profile States
   const [selectedProfile, setSelectedProfile] = useState<string | null>(null);
   const [globalProfiles, setGlobalProfiles] = useState<Record<string, any>>({}); 
-  
-  // Profile Edit States
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [tempName, setTempName] = useState("");
   const [tempAvatar, setTempAvatar] = useState("");
@@ -324,7 +243,6 @@ export default function Home() {
 
   const fetchJobsAndProfiles = useCallback(async () => {
     try {
-      // Fetch Jobs
       const jobsData = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_all_jobs",
@@ -335,7 +253,6 @@ export default function Home() {
         setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
       }
 
-      // Fetch Profiles
       const profilesData = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_profiles",
@@ -362,7 +279,6 @@ export default function Home() {
     setIsEditingProfile(false);
   };
 
-  // NATIVE SMART CONTRACT CALLER
   const sendGenLayerTransaction = async (functionName: string, args: any[], value: bigint = BigInt(0)) => {
     if (!address) throw new Error("Wallet not connected");
     const client = createClient({
@@ -373,7 +289,7 @@ export default function Home() {
       address: CONTRACT_ADDRESS as `0x${string}`,
       functionName: functionName,
       args: args,
-      value: value, // Passes native GEN directly
+      value: value, 
     });
     return hash;
   };
@@ -400,7 +316,6 @@ export default function Home() {
     try {
       const priceWei = parseEther(jobPrice);
       
-      // Native Wallet Balance Check
       if (balanceData && balanceData.value < priceWei) {
         return showToast("Insufficient GEN in your wallet.", "", "error");
       }
@@ -408,7 +323,6 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // Sending actual native value to the contract
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
