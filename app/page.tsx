@@ -324,25 +324,30 @@ export default function Home() {
 
   const fetchJobsAndProfiles = useCallback(async () => {
     try {
-      // Fetch Jobs
       const jobsData = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_all_jobs",
         args: [],
       });
       if (jobsData) {
-        const parsedJobs = typeof jobsData === "string" ? JSON.parse(jobsData) : jobsData;
+        let parsedJobs = jobsData;
+        if (typeof jobsData === "string") {
+            try { parsedJobs = JSON.parse(jobsData); } catch (e) {}
+        }
         setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
       }
 
-      // Fetch Profiles
       const profilesData = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_profiles",
         args: [],
       });
       if (profilesData) {
-        setGlobalProfiles(typeof profilesData === "string" ? JSON.parse(profilesData) : profilesData);
+        let parsedProfiles = profilesData;
+        if (typeof profilesData === "string") {
+            try { parsedProfiles = JSON.parse(profilesData); } catch (e) {}
+        }
+        setGlobalProfiles(parsedProfiles);
       }
     } catch (error: any) {
       console.error("Error fetching data:", error);
@@ -400,7 +405,6 @@ export default function Home() {
     try {
       const priceWei = parseEther(jobPrice);
       
-      // Native Wallet Balance Check
       if (balanceData && balanceData.value < priceWei) {
         return showToast("Insufficient GEN in your wallet.", "", "error");
       }
@@ -408,8 +412,8 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // FIX: Added priceWei.toString() in args to match python backend safety check
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceWei.toString(), jobCategory], priceWei);
+      // PERFECTED: Exact 2 arguments matching the ABI and Python contract + value
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
       setJobDesc("");
@@ -822,7 +826,7 @@ export default function Home() {
                   </div>
 
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
-                    {loadingAction === "post" ? "Please sign transaction in wallet..." : "Lock GEN & Post Job"}
+                    {loadingAction === "post" ? "Processing..." : "Lock GEN & Post Job"}
                   </button>
                 </div>
               </div>
