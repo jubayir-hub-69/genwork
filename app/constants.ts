@@ -1,9 +1,10 @@
-export const CONTRACT_ADDRESS = "0x60fAC3D13A364a68C3d22740deD7CDbA815dc3Bc";
+export const CONTRACT_ADDRESS = "0x74601833DDD3eFcDA2Fb3e8B14162575a44A2aa6";
 
 export const CONTRACT_ABI = [
   {
     "name": "post_job",
     "type": "function",
+    "stateMutability": "payable",
     "inputs": [
       { "name": "desc", "type": "string" },
       { "name": "category", "type": "string" }
