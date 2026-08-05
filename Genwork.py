@@ -13,30 +13,21 @@ class GenWork(gl.Contract):
 
     # --- REAL FLOW OF FUNDS (Defensive & Crash-Proof) ---
     @gl.public.write
-    def post_job(self, desc: str, price_arg: str, category: str) -> None:
-        # Safely get sender
-        try:
-            client = str(gl.message.sender).lower()
-        except Exception:
-            client = "unknown_client"
-
-        # Safely get native value, fallback to argument if simulator strips it
-        try:
-            val = getattr(gl.message, 'value', 0)
-            if val is None: val = 0
-            actual_val = int(val)
-        except Exception:
-            actual_val = 0
+    def post_job(self, desc: str, category: str) -> None:
+        # FIXED: Casting sender and value to string to prevent JSON serialization crash!
+        client = str(gl.message.sender).lower()
+        price_wei = int(gl.message.value)
+        
+        if price_wei <= 0:
+            raise Exception("Job price must be greater than zero.")
             
-        final_price = actual_val if actual_val > 0 else int(price_arg)
-
         jobs = json.loads(self.jobs_data)
         new_id = str(len(jobs) + 1)
         
         jobs.append({
             "id": new_id,
             "desc": str(desc),
-            "price_wei": str(final_price), 
+            "price_wei": str(price_wei), 
             "category": str(category),
             "client": client,
             "freelancer": "",
@@ -49,11 +40,7 @@ class GenWork(gl.Contract):
 
     @gl.public.write
     def submit_work(self, job_id: str, work_url: str) -> None:
-        try:
-            freelancer = str(gl.message.sender).lower()
-        except Exception:
-            freelancer = "unknown_freelancer"
-            
+        freelancer = str(gl.message.sender).lower()
         jobs = json.loads(self.jobs_data)
         idx = int(job_id) - 1
         if idx < 0 or idx >= len(jobs): return
@@ -80,9 +67,7 @@ class GenWork(gl.Contract):
             TASK: Verify if the fetched evidence actually matches the job description.
             If the link failed to fetch, or content is irrelevant, REJECT.
             If it perfectly proves the work is done, APPROVE.
-            
             Respond STRICTLY in JSON: {{"decision": "APPROVE" or "REJECT", "reason": "Explanation"}}"""
-            
             return gl.nondet.exec_prompt(prompt, response_format="json")
 
         def validator_fn(leaders_res) -> bool:
@@ -94,10 +79,7 @@ class GenWork(gl.Contract):
             if result.get("decision") == "APPROVE":
                 job["status"] = "COMPLETED"
                 job["ai_decision"] = result.get("reason", "Approved.")
-                # Safe Native Transfer
-                try:
-                    if hasattr(gl, 'send'): gl.send(job["freelancer"], int(job["price_wei"]))
-                except Exception: pass
+                if hasattr(gl, 'send'): gl.send(job["freelancer"], int(job["price_wei"]))
             else:
                 job["status"] = "AI_REJECTED"
                 job["ai_decision"] = result.get("reason", "Rejected.")
@@ -134,7 +116,6 @@ class GenWork(gl.Contract):
 
             Does the argument and evidence prove the work is done?
             Respond STRICTLY in JSON: {{"decision": "APPROVE" or "REJECT", "reason": "Explanation"}}"""
-            
             return gl.nondet.exec_prompt(prompt, response_format="json")
 
         def validator_fn(leaders_res) -> bool:
@@ -146,15 +127,11 @@ class GenWork(gl.Contract):
             if result.get("decision") == "APPROVE":
                 job["status"] = "COMPLETED"
                 job["ai_decision"] = "Appeal Won: " + result.get("reason")
-                try:
-                    if hasattr(gl, 'send'): gl.send(job["freelancer"], int(job["price_wei"]))
-                except Exception: pass
+                if hasattr(gl, 'send'): gl.send(job["freelancer"], int(job["price_wei"]))
             else:
                 job["status"] = "APPEAL_REJECTED"
                 job["ai_decision"] = "Appeal Lost: " + result.get("reason")
-                try:
-                    if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
-                except Exception: pass
+                if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
         except Exception:
             job["status"] = "AI_REJECTED"
             job["ai_decision"] = "Appeal Processing Failed."
@@ -164,10 +141,7 @@ class GenWork(gl.Contract):
 
     @gl.public.write
     def reject_work(self, job_id: str) -> None:
-        try:
-            caller = str(gl.message.sender).lower()
-        except Exception:
-            caller = ""
+        caller = str(gl.message.sender).lower()
         jobs = json.loads(self.jobs_data)
         idx = int(job_id) - 1
         if idx < 0 or idx >= len(jobs): return
@@ -176,17 +150,12 @@ class GenWork(gl.Contract):
         if job["client"] == caller and job["status"] == "AI_REJECTED":
             job["status"] = "CANCELLED"
             job["ai_decision"] = "Client confirmed rejection. Escrow refunded."
-            try:
-                if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
-            except Exception: pass
+            if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
             self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
     def cancel_job(self, job_id: str) -> None:
-        try:
-            client = str(gl.message.sender).lower()
-        except Exception:
-            client = ""
+        client = str(gl.message.sender).lower()
         jobs = json.loads(self.jobs_data)
         idx = int(job_id) - 1
         if idx < 0 or idx >= len(jobs): return
@@ -194,17 +163,12 @@ class GenWork(gl.Contract):
         
         if job["client"] == client and job["status"] in ["OPEN", "FAILED_EVALUATION"]:
             job["status"] = "CANCELLED"
-            try:
-                if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
-            except Exception: pass
+            if hasattr(gl, 'send'): gl.send(job["client"], int(job["price_wei"]))
             self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
     def send_message(self, job_id: str, message: str) -> None:
-        try:
-            sender = str(gl.message.sender).lower()
-        except Exception:
-            sender = "unknown"
+        sender = str(gl.message.sender).lower()
         jobs = json.loads(self.jobs_data)
         idx = int(job_id) - 1
         if 0 <= idx < len(jobs):
@@ -215,10 +179,7 @@ class GenWork(gl.Contract):
 
     @gl.public.write
     def update_profile(self, nickname: str, avatar_url: str) -> None:
-        try:
-            caller = str(gl.message.sender).lower()
-        except Exception:
-            return
+        caller = str(gl.message.sender).lower()
         profiles = json.loads(self.profiles_data)
         profiles[caller] = {"nickname": str(nickname), "avatar": str(avatar_url)}
         self.profiles_data = json.dumps(profiles)
