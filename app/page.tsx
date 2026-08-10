@@ -322,40 +322,71 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
+  // ULTIMATE BULLETPROOF DATA FETCHER
   const fetchJobsAndProfiles = useCallback(async () => {
     try {
-      const jobsData = await genlayerClient.readContract({
+      console.log("Fetching data from Contract:", CONTRACT_ADDRESS);
+      
+      const jobsData: any = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_all_jobs",
         args: [],
       });
-      if (jobsData) {
-        let parsedJobs: any = jobsData;
+      
+      console.log("RAW JOBS DATA FROM CHAIN:", jobsData);
+      
+      let parsedJobs: any[] = [];
+      try {
         if (typeof jobsData === "string") {
-            try { parsedJobs = JSON.parse(jobsData); } catch (e: any) {}
+            parsedJobs = JSON.parse(jobsData);
+        } else if (Array.isArray(jobsData)) {
+            parsedJobs = jobsData;
+        } else if (jobsData && typeof jobsData === "object") {
+            const innerData = jobsData.result || jobsData.data || jobsData[0];
+            if (typeof innerData === "string") {
+                parsedJobs = JSON.parse(innerData);
+            } else if (Array.isArray(innerData)) {
+                parsedJobs = innerData;
+            }
         }
-        setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
+      } catch (e) {
+          console.error("Failed to parse jobs JSON:", e);
       }
+      setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
 
-      const profilesData = await genlayerClient.readContract({
+      const profilesData: any = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_profiles",
         args: [],
       });
-      if (profilesData) {
-        let parsedProfiles: any = profilesData;
+      
+      let parsedProfiles = {};
+      try {
         if (typeof profilesData === "string") {
-            try { parsedProfiles = JSON.parse(profilesData); } catch (e: any) {}
+            parsedProfiles = JSON.parse(profilesData);
+        } else if (profilesData && typeof profilesData === "object") {
+            const innerData = profilesData.result || profilesData.data || profilesData[0];
+            if (typeof innerData === "string") {
+                parsedProfiles = JSON.parse(innerData);
+            } else {
+                parsedProfiles = innerData;
+            }
         }
-        setGlobalProfiles(parsedProfiles as Record<string, any>);
+      } catch (e) {
+          console.error("Failed to parse profiles JSON:", e);
       }
+      setGlobalProfiles(parsedProfiles as Record<string, any>);
+      
     } catch (error: any) {
-      console.error("Error fetching data:", error);
+      console.error("Blockchain Call Error:", error);
     }
   }, []);
 
   useEffect(() => {
     fetchJobsAndProfiles();
+    // Auto-refresh every 5 seconds to catch delayed block states
+    const interval = setInterval(() => fetchJobsAndProfiles(), 5000);
+    return () => clearInterval(interval);
   }, [fetchJobsAndProfiles]);
 
   const openProfileModal = (addr: string) => {
@@ -411,7 +442,7 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // FIXED: Sending 3 exact arguments (desc, stringified price_wei, category) + native value
+      // Sending exact 3 arguments + native value
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceWei.toString(), jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
@@ -419,7 +450,12 @@ export default function Home() {
       setJobPrice("");
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted & Escrow Locked!", tx, "success");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      
+      // Force aggressive refresh
+      fetchJobsAndProfiles();
+      setTimeout(fetchJobsAndProfiles, 3000);
+      setTimeout(fetchJobsAndProfiles, 6000);
+      
     } catch (error: any) {
       showToast(error.message || "Transaction failed or rejected", "", "error");
     } finally {
@@ -438,7 +474,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData]);
       saveToHistory(tx, `Submitted Evidence URL for Job #${jobId}`);
       showToast("Work URL Submitted! AI is now evaluating...", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -457,7 +493,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("send_message", [jobId, message]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -476,7 +512,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -493,7 +529,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("reject_work", [jobId]);
       saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
       showToast("Rejection confirmed & Escrow refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -510,7 +546,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("cancel_job", [jobId]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled & Funds Refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
