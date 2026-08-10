@@ -322,7 +322,6 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  // VERCEL STRICT TYPESCRIPT ERROR FIXED HERE
   const fetchJobsAndProfiles = useCallback(async () => {
     try {
       const jobsData = await genlayerClient.readContract({
@@ -412,7 +411,8 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
+      // FIXED: Sending 3 exact arguments (desc, stringified price_wei, category) + native value
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceWei.toString(), jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
       setJobDesc("");
@@ -825,7 +825,7 @@ export default function Home() {
                   </div>
 
                   <button onClick={handlePostJob} disabled={loadingAction !== null} className={`w-full py-4 rounded-2xl font-bold transition-all duration-300 text-lg ${loadingAction === "post" ? "bg-slate-700/50 text-slate-400 cursor-not-allowed" : "bg-blue-600 text-white hover:bg-blue-500 shadow-[0_0_20px_rgba(37,99,235,0.4)] hover:shadow-[0_0_30px_rgba(37,99,235,0.6)] hover:-translate-y-1"}`}>
-                    {loadingAction === "post" ? "Please sign transaction in wallet..." : "Lock GEN & Post Job"}
+                    {loadingAction === "post" ? "Processing..." : "Lock GEN & Post Job"}
                   </button>
                 </div>
               </div>
