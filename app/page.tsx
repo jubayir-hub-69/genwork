@@ -322,36 +322,28 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  // ULTIMATE BULLETPROOF DATA FETCHER
+  // SAFE DATA FETCHER
   const fetchJobsAndProfiles = useCallback(async () => {
+    if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS.length < 10) return;
     try {
-      console.log("Fetching data from Contract:", CONTRACT_ADDRESS);
-      
       const jobsData: any = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_all_jobs",
         args: [],
       });
       
-      console.log("RAW JOBS DATA FROM CHAIN:", jobsData);
-      
       let parsedJobs: any[] = [];
       try {
-        if (typeof jobsData === "string") {
-            parsedJobs = JSON.parse(jobsData);
-        } else if (Array.isArray(jobsData)) {
-            parsedJobs = jobsData;
-        } else if (jobsData && typeof jobsData === "object") {
-            const innerData = jobsData.result || jobsData.data || jobsData[0];
-            if (typeof innerData === "string") {
-                parsedJobs = JSON.parse(innerData);
-            } else if (Array.isArray(innerData)) {
-                parsedJobs = innerData;
-            }
+        let rawData = jobsData;
+        if (typeof jobsData === 'object' && jobsData !== null) {
+            rawData = jobsData.data || jobsData.result || jobsData[0] || jobsData;
         }
-      } catch (e) {
-          console.error("Failed to parse jobs JSON:", e);
-      }
+        if (typeof rawData === 'string') {
+            parsedJobs = JSON.parse(rawData);
+        } else if (Array.isArray(rawData)) {
+            parsedJobs = rawData;
+        }
+      } catch (e) { }
       setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
 
       const profilesData: any = await genlayerClient.readContract({
@@ -362,31 +354,26 @@ export default function Home() {
       
       let parsedProfiles = {};
       try {
-        if (typeof profilesData === "string") {
-            parsedProfiles = JSON.parse(profilesData);
-        } else if (profilesData && typeof profilesData === "object") {
-            const innerData = profilesData.result || profilesData.data || profilesData[0];
-            if (typeof innerData === "string") {
-                parsedProfiles = JSON.parse(innerData);
-            } else {
-                parsedProfiles = innerData;
-            }
+        let rawPData = profilesData;
+        if (typeof profilesData === 'object' && profilesData !== null) {
+            rawPData = profilesData.data || profilesData.result || profilesData[0] || profilesData;
         }
-      } catch (e) {
-          console.error("Failed to parse profiles JSON:", e);
-      }
+        if (typeof rawPData === 'string') {
+            parsedProfiles = JSON.parse(rawPData);
+        } else if (typeof rawPData === 'object') {
+            parsedProfiles = rawPData;
+        }
+      } catch (e) { }
       setGlobalProfiles(parsedProfiles as Record<string, any>);
       
     } catch (error: any) {
-      console.error("Blockchain Call Error:", error);
+      console.log("Blockchain Call Log:", error);
     }
   }, []);
 
+  // FIXED: Removed auto-refresh completely to stop Mobile RPC Rate Limit Error
   useEffect(() => {
     fetchJobsAndProfiles();
-    // Auto-refresh every 5 seconds to catch delayed block states
-    const interval = setInterval(() => fetchJobsAndProfiles(), 5000);
-    return () => clearInterval(interval);
   }, [fetchJobsAndProfiles]);
 
   const openProfileModal = (addr: string) => {
@@ -420,7 +407,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("update_profile", [tempName, tempAvatar]);
       showToast("Profile globally updated!", tx, "success");
       setIsEditingProfile(false);
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch(err: any) {
       showToast(err.message || "Failed to save profile", "", "error");
     } finally { setLoadingAction(null); }
@@ -442,7 +429,6 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // Sending exact 3 arguments + native value
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceWei.toString(), jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
@@ -451,10 +437,8 @@ export default function Home() {
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted & Escrow Locked!", tx, "success");
       
-      // Force aggressive refresh
-      fetchJobsAndProfiles();
-      setTimeout(fetchJobsAndProfiles, 3000);
-      setTimeout(fetchJobsAndProfiles, 6000);
+      // Allow block time before refresh
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
       
     } catch (error: any) {
       showToast(error.message || "Transaction failed or rejected", "", "error");
@@ -474,7 +458,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData]);
       saveToHistory(tx, `Submitted Evidence URL for Job #${jobId}`);
       showToast("Work URL Submitted! AI is now evaluating...", tx, "info");
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -493,7 +477,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("send_message", [jobId, message]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -512,7 +496,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -529,7 +513,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("reject_work", [jobId]);
       saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
       showToast("Rejection confirmed & Escrow refunded!", tx, "info");
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -546,7 +530,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("cancel_job", [jobId]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled & Funds Refunded!", tx, "info");
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
