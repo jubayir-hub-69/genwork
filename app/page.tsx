@@ -371,7 +371,6 @@ export default function Home() {
     }
   }, []);
 
-  // FIXED: Removed auto-refresh completely to stop Mobile RPC Rate Limit Error
   useEffect(() => {
     fetchJobsAndProfiles();
   }, [fetchJobsAndProfiles]);
@@ -407,7 +406,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("update_profile", [tempName, tempAvatar]);
       showToast("Profile globally updated!", tx, "success");
       setIsEditingProfile(false);
-      fetchJobsAndProfiles();
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch(err: any) {
       showToast(err.message || "Failed to save profile", "", "error");
     } finally { setLoadingAction(null); }
@@ -429,7 +428,8 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, priceWei.toString(), jobCategory], priceWei);
+      // FIX CLAUDE: Sending strictly 2 parameters as defined in ABI
+      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
       setJobDesc("");
@@ -437,8 +437,8 @@ export default function Home() {
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted & Escrow Locked!", tx, "success");
       
-      // Allow block time before refresh
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      // Delay fetching until transaction finalizes
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
       
     } catch (error: any) {
       showToast(error.message || "Transaction failed or rejected", "", "error");
@@ -458,7 +458,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData]);
       saveToHistory(tx, `Submitted Evidence URL for Job #${jobId}`);
       showToast("Work URL Submitted! AI is now evaluating...", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -477,7 +477,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("send_message", [jobId, message]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -496,7 +496,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -513,7 +513,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("reject_work", [jobId]);
       saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
       showToast("Rejection confirmed & Escrow refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -530,7 +530,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("cancel_job", [jobId]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled & Funds Refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      setTimeout(() => fetchJobsAndProfiles(), 4000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
