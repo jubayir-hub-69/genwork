@@ -406,7 +406,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("update_profile", [tempName, tempAvatar]);
       showToast("Profile globally updated!", tx, "success");
       setIsEditingProfile(false);
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      fetchJobsAndProfiles();
     } catch(err: any) {
       showToast(err.message || "Failed to save profile", "", "error");
     } finally { setLoadingAction(null); }
@@ -428,7 +428,6 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      // FIX CLAUDE: Sending strictly 2 parameters as defined in ABI
       const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
@@ -437,8 +436,7 @@ export default function Home() {
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted & Escrow Locked!", tx, "success");
       
-      // Delay fetching until transaction finalizes
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
       
     } catch (error: any) {
       showToast(error.message || "Transaction failed or rejected", "", "error");
@@ -450,15 +448,16 @@ export default function Home() {
   const handleSubmitWork = async (jobId: string) => {
     if (loadingAction) return;
     const workData = workInputs[jobId];
-    if (!workData || !workData.startsWith("http")) return showToast("Please paste a valid URL (http/https)", "", "error");
+    // FIXED: Now accepts plain text OR links! Removed the strict URL check.
+    if (!workData || workData.trim() === "") return showToast("Please provide work evidence (Text or Link)!", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
     
     try {
       setLoadingAction(`submit-${jobId}`);
       const tx = await sendGenLayerTransaction("submit_work", [jobId, workData]);
-      saveToHistory(tx, `Submitted Evidence URL for Job #${jobId}`);
-      showToast("Work URL Submitted! AI is now evaluating...", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      saveToHistory(tx, `Submitted Evidence for Job #${jobId}`);
+      showToast("Work Submitted! AI is now evaluating...", tx, "info");
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -477,7 +476,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("send_message", [jobId, message]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -496,7 +495,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -513,7 +512,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("reject_work", [jobId]);
       saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
       showToast("Rejection confirmed & Escrow refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -530,7 +529,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("cancel_job", [jobId]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled & Funds Refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 4000);
+      setTimeout(() => fetchJobsAndProfiles(), 3000);
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -571,8 +570,9 @@ export default function Home() {
     return nick ? `${nick} (${short})` : short;
   };
 
+  // FIXED: isMyJob safely handles potential "unknown_sender" from previous bug
   const isMyJob = (job: any) =>
-    address && job.client?.toLowerCase() === address.toLowerCase();
+    address && job.client && job.client.toLowerCase() === address.toLowerCase();
 
   const formatPrice = (weiStr: string | bigint) => {
     try {
@@ -926,10 +926,16 @@ export default function Home() {
                               )}
                               {job.work_data && (
                                 <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
-                                  <span className="font-semibold text-slate-500">Submitted Evidence URL:</span> 
-                                  <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
-                                    {job.work_data}
-                                  </a>
+                                  <span className="font-semibold text-slate-500">Submitted Evidence:</span> 
+                                  {job.work_data.startsWith("http") ? (
+                                    <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
+                                      {job.work_data}
+                                    </a>
+                                  ) : (
+                                    <div className="bg-black/30 p-3 rounded-lg border border-white/5 text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap mt-1">
+                                      {job.work_data}
+                                    </div>
+                                  )}
                                 </div>
                               )}
                             </div>
@@ -1034,10 +1040,9 @@ export default function Home() {
                                 </div>
                               ) : (
                                 <>
-                                  <input 
-                                    type="url"
-                                    placeholder="Paste Web Link (https://...)" 
-                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors" 
+                                  <textarea 
+                                    placeholder="Paste Web Link (https://...) OR Type text proof..." 
+                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors resize-y min-h-[100px]" 
                                     value={workInputs[job.id] || ""} 
                                     onChange={(e) => setWorkInputs((prev) => ({ ...prev, [job.id]: e.target.value }))} 
                                   />
