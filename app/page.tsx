@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
-import { useAccount, useBalance } from "wagmi";
+import { useAccount, useBalance, useWalletClient } from "wagmi";
 import { CONTRACT_ADDRESS } from "./constants";
 import { parseEther, formatEther } from "viem";
 
@@ -12,6 +12,213 @@ import { studionet } from "genlayer-js/chains";
 const genlayerClient = createClient({ chain: studionet });
 
 const CATEGORIES = ["Web3", "AI", "Design", "Writing", "Other"];
+const REFRESH_AFTER_TX_MS = 3000;
+const STUDIO_CHAIN_ID_HEX = `0x${studionet.id.toString(16)}`;
+
+type Eip1193Provider = {
+  request: (args: { method: string; params?: unknown }) => Promise<unknown>;
+};
+
+type Eip6963ProviderDetail = {
+  info: { uuid: string; name: string; rdns: string; icon?: string };
+  provider: Eip1193Provider;
+};
+
+const canonicalAddress = (value: unknown): string => {
+  if (value == null) return "";
+
+  let raw = "";
+  if (typeof value === "string") {
+    raw = value;
+  } else if (typeof value === "object") {
+    const obj = value as Record<string, unknown>;
+    if (typeof obj.address === "string") raw = obj.address;
+    else if (typeof obj.as_hex === "string") raw = obj.as_hex;
+    else if (typeof obj.asHex === "string") raw = obj.asHex;
+    else raw = String(value);
+  } else {
+    raw = String(value);
+  }
+
+  const lowered = raw.trim().toLowerCase();
+  if (!lowered || lowered.includes("unknown")) return "";
+
+  const hexMatches = lowered.match(/[0-9a-f]{40}/g);
+  if (hexMatches && hexMatches.length > 0) {
+    return `0x${hexMatches[hexMatches.length - 1]}`;
+  }
+  return lowered;
+};
+
+const sameAddress = (a: unknown, b: unknown): boolean => {
+  const left = canonicalAddress(a);
+  const right = canonicalAddress(b);
+  return Boolean(left) && left === right;
+};
+
+const unwrapCalldata = (raw: unknown): unknown => {
+  if (typeof raw === "string" || Array.isArray(raw) || raw == null) return raw;
+  if (typeof raw === "object") {
+    const rec = raw as Record<string, unknown>;
+    if (typeof rec.data === "string" || Array.isArray(rec.data) || (rec.data && typeof rec.data === "object")) {
+      return rec.data;
+    }
+    if (typeof rec.result === "string" || Array.isArray(rec.result) || (rec.result && typeof rec.result === "object")) {
+      return rec.result;
+    }
+  }
+  return raw;
+};
+
+const parseJobsPayload = (raw: unknown): any[] => {
+  try {
+    let data: unknown = unwrapCalldata(raw);
+    if (typeof data === "string") {
+      const trimmed = data.trim();
+      if (!trimmed) return [];
+      data = JSON.parse(trimmed);
+    }
+    return Array.isArray(data) ? (data as any[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseProfilesPayload = (raw: unknown): Record<string, any> => {
+  try {
+    let data: unknown = unwrapCalldata(raw);
+    if (typeof data === "string") {
+      const trimmed = data.trim();
+      if (!trimmed) return {};
+      data = JSON.parse(trimmed);
+    }
+    if (!data || typeof data !== "object" || Array.isArray(data)) return {};
+
+    const out: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data as Record<string, any>)) {
+      const canon = canonicalAddress(key);
+      out[canon || String(key).toLowerCase()] = value;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+};
+
+const isEip1193Provider = (value: unknown): value is Eip1193Provider =>
+  Boolean(value) && typeof value === "object" && typeof (value as Eip1193Provider).request === "function";
+
+const unwrapProvider = (value: unknown): Eip1193Provider | null => {
+  if (isEip1193Provider(value)) return value;
+  if (value && typeof value === "object") {
+    const rec = value as Record<string, unknown>;
+    if (isEip1193Provider(rec.value)) return rec.value;
+    if (isEip1193Provider(rec.provider)) return rec.provider;
+  }
+  return null;
+};
+
+const isMetaMaskInfo = (rdns: string, name: string) => {
+  const r = (rdns || "").toLowerCase();
+  const n = (name || "").toLowerCase();
+  return r === "io.metamask" || r.startsWith("io.metamask.") || n.includes("metamask");
+};
+
+const discoverEip6963Providers = (): Eip6963ProviderDetail[] => {
+  if (typeof window === "undefined") return [];
+  const found: Eip6963ProviderDetail[] = [];
+  const onAnnounce = (event: Event) => {
+    const detail = (event as CustomEvent<Eip6963ProviderDetail>).detail;
+    if (detail?.info && isEip1193Provider(detail.provider)) {
+      found.push(detail);
+    }
+  };
+  window.addEventListener("eip6963:announceProvider", onAnnounce as EventListener);
+  window.dispatchEvent(new Event("eip6963:requestProvider"));
+  window.removeEventListener("eip6963:announceProvider", onAnnounce as EventListener);
+  return found;
+};
+
+const providerHasAccount = async (provider: Eip1193Provider, addr: string) => {
+  try {
+    const accounts = await provider.request({ method: "eth_accounts" });
+    if (!Array.isArray(accounts)) return false;
+    return accounts.some((item) => canonicalAddress(item) === canonicalAddress(addr));
+  } catch {
+    return false;
+  }
+};
+
+const resolveConnectedProvider = async (args: {
+  address: string;
+  connector?: { id?: string; name?: string; getProvider?: (params?: { chainId?: number }) => Promise<unknown> } | null;
+  walletClient?: unknown;
+}): Promise<Eip1193Provider> => {
+  const announced = discoverEip6963Providers();
+  const matching: Eip6963ProviderDetail[] = [];
+  for (const detail of announced) {
+    if (await providerHasAccount(detail.provider, args.address)) {
+      matching.push(detail);
+    }
+  }
+  if (matching.length > 0) {
+    const metamask = matching.find((detail) => isMetaMaskInfo(detail.info.rdns, detail.info.name));
+    return (metamask || matching[0]).provider;
+  }
+
+  if (args.connector?.getProvider) {
+    try {
+      const raw = await args.connector.getProvider();
+      const fromConnector = unwrapProvider(raw);
+      if (fromConnector) return fromConnector;
+    } catch {
+      // Fall through to the wagmi wallet client.
+    }
+  }
+
+  const walletClient = args.walletClient as { transport?: unknown; request?: Function } | null | undefined;
+  const fromTransport = unwrapProvider(walletClient?.transport);
+  if (fromTransport) return fromTransport;
+
+  if (walletClient && typeof walletClient.request === "function") {
+    return {
+      request: (req) => walletClient.request!({ method: req.method, params: req.params }),
+    };
+  }
+
+  throw new Error("Connected wallet provider unavailable. Reconnect MetaMask from the wallet button.");
+};
+
+const ensureStudioNetwork = async (provider: Eip1193Provider) => {
+  try {
+    const current = String(await provider.request({ method: "eth_chainId" })).toLowerCase();
+    if (current === STUDIO_CHAIN_ID_HEX.toLowerCase()) return;
+    try {
+      await provider.request({
+        method: "wallet_switchEthereumChain",
+        params: [{ chainId: STUDIO_CHAIN_ID_HEX }],
+      });
+    } catch (err: unknown) {
+      const code = (err as { code?: number })?.code;
+      if (code === 4902 || code === -32603) {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [{
+            chainId: STUDIO_CHAIN_ID_HEX,
+            chainName: studionet.name,
+            nativeCurrency: studionet.nativeCurrency,
+            rpcUrls: [...studionet.rpcUrls.default.http],
+            blockExplorerUrls: studionet.blockExplorers?.default?.url
+              ? [studionet.blockExplorers.default.url]
+              : ["https://explorer-studio.genlayer.com"],
+          }],
+        });
+      }
+    }
+  } catch {
+    // Studio writes skip chain assertion; the wallet prompt still carries the tx.
+  }
+};
 
 // -------------------------------------------------------------
 // 🌌 Animated Background Component
@@ -264,7 +471,8 @@ const AnimatedBackground = () => {
 // -------------------------------------------------------------
 
 export default function Home() {
-  const { address, isConnected } = useAccount();
+  const { address, isConnected, connector } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const { data: balanceData } = useBalance({ address });
   
   const myBalance = balanceData ? Number(balanceData.formatted).toFixed(4) : "0.00";
@@ -274,7 +482,8 @@ export default function Home() {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   
   const [toast, setToast] = useState<{ message: string; tx: string; type: 'success'|'error'|'info' } | null>(null);
-  const toastTimeout = useRef<NodeJS.Timeout | null>(null);
+  const toastTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const refreshTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [jobDesc, setJobDesc] = useState("");
   const [jobPrice, setJobPrice] = useState("");
@@ -322,81 +531,95 @@ export default function Home() {
     localStorage.setItem(`genwork_tx_history_${CONTRACT_ADDRESS}`, JSON.stringify(updatedHistory));
   };
 
-  // SAFE DATA FETCHER
   const fetchJobsAndProfiles = useCallback(async () => {
     if (!CONTRACT_ADDRESS || CONTRACT_ADDRESS.length < 10) return;
     try {
-      const jobsData: any = await genlayerClient.readContract({
+      const jobsData: unknown = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_all_jobs",
         args: [],
+        jsonSafeReturn: true,
       });
-      
+
       let parsedJobs: any[] = [];
       try {
-        let rawData = jobsData;
-        if (typeof jobsData === 'object' && jobsData !== null) {
-            rawData = jobsData.data || jobsData.result || jobsData[0] || jobsData;
-        }
-        if (typeof rawData === 'string') {
-            parsedJobs = JSON.parse(rawData);
-        } else if (Array.isArray(rawData)) {
-            parsedJobs = rawData;
-        }
-      } catch (e) { }
+        parsedJobs = parseJobsPayload(jobsData) as any[];
+      } catch {
+        parsedJobs = [];
+      }
       setJobs(Array.isArray(parsedJobs) ? parsedJobs : []);
 
-      const profilesData: any = await genlayerClient.readContract({
+      const profilesData: unknown = await genlayerClient.readContract({
         address: CONTRACT_ADDRESS as `0x${string}`,
         functionName: "get_profiles",
         args: [],
+        jsonSafeReturn: true,
       });
-      
-      let parsedProfiles = {};
+
+      let parsedProfiles: Record<string, any> = {};
       try {
-        let rawPData = profilesData;
-        if (typeof profilesData === 'object' && profilesData !== null) {
-            rawPData = profilesData.data || profilesData.result || profilesData[0] || profilesData;
-        }
-        if (typeof rawPData === 'string') {
-            parsedProfiles = JSON.parse(rawPData);
-        } else if (typeof rawPData === 'object') {
-            parsedProfiles = rawPData;
-        }
-      } catch (e) { }
+        parsedProfiles = parseProfilesPayload(profilesData) as Record<string, any>;
+      } catch {
+        parsedProfiles = {};
+      }
       setGlobalProfiles(parsedProfiles as Record<string, any>);
-      
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.log("Blockchain Call Log:", error);
     }
   }, []);
 
+  const refreshAfterTx = useCallback(() => {
+    if (refreshTimeout.current) clearTimeout(refreshTimeout.current);
+    refreshTimeout.current = setTimeout(() => {
+      void fetchJobsAndProfiles();
+    }, REFRESH_AFTER_TX_MS);
+  }, [fetchJobsAndProfiles]);
+
   useEffect(() => {
     fetchJobsAndProfiles();
+    return () => {
+      if (refreshTimeout.current) clearTimeout(refreshTimeout.current);
+      if (toastTimeout.current) clearTimeout(toastTimeout.current);
+    };
   }, [fetchJobsAndProfiles]);
 
   const openProfileModal = (addr: string) => {
     if (!addr) return;
-    const formattedAddr = addr.toLowerCase();
+    const formattedAddr = canonicalAddress(addr) || String(addr).toLowerCase();
     setSelectedProfile(addr);
     setTempName(globalProfiles[formattedAddr]?.nickname || "");
     setTempAvatar(globalProfiles[formattedAddr]?.avatar || "");
     setIsEditingProfile(false);
   };
 
-  const sendGenLayerTransaction = async (functionName: string, args: any[], value: bigint = BigInt(0)) => {
+  const sendGenLayerTransaction = async (functionName: string, args: string[], value: bigint = BigInt(0)) => {
     if (!address) throw new Error("Wallet not connected");
-    const client = createClient({
+
+    const provider = await resolveConnectedProvider({
+      address,
+      connector,
+      walletClient: walletClient ?? null,
+    });
+
+    await ensureStudioNetwork(provider);
+
+    const writeClient = createClient({
       chain: studionet,
       account: address as `0x${string}`,
+      provider,
     });
-    const hash = await client.writeContract({
+
+    // Do not call writeClient.connect() — genlayer-js hardcodes window.ethereum
+    // for wallet_getSnaps, which Rabby hijacks. Studio writes only need eth_sendTransaction
+    // on the EIP-6963 provider of the wallet the user actually connected.
+
+    const hash = await writeClient.writeContract({
       address: CONTRACT_ADDRESS as `0x${string}`,
-      functionName: functionName,
-      args: args,
-      value: value, 
+      functionName,
+      args: args.map((arg) => String(arg)),
+      value: typeof value === "bigint" ? value : BigInt(value),
     });
-    return hash;
+    return hash as string;
   };
 
   const saveProfileData = async () => {
@@ -406,7 +629,7 @@ export default function Home() {
       const tx = await sendGenLayerTransaction("update_profile", [tempName, tempAvatar]);
       showToast("Profile globally updated!", tx, "success");
       setIsEditingProfile(false);
-      fetchJobsAndProfiles();
+      refreshAfterTx();
     } catch(err: any) {
       showToast(err.message || "Failed to save profile", "", "error");
     } finally { setLoadingAction(null); }
@@ -428,7 +651,7 @@ export default function Home() {
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      const tx = await sendGenLayerTransaction("post_job", [jobDesc, jobCategory], priceWei);
+      const tx = await sendGenLayerTransaction("post_job", [String(jobDesc), String(jobCategory)], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
       setJobDesc("");
@@ -436,7 +659,7 @@ export default function Home() {
       setJobCategory(CATEGORIES[0]);
       showToast("Job Posted & Escrow Locked!", tx, "success");
       
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
       
     } catch (error: any) {
       showToast(error.message || "Transaction failed or rejected", "", "error");
@@ -454,10 +677,10 @@ export default function Home() {
     
     try {
       setLoadingAction(`submit-${jobId}`);
-      const tx = await sendGenLayerTransaction("submit_work", [jobId, workData]);
+      const tx = await sendGenLayerTransaction("submit_work", [String(jobId), String(workData)]);
       saveToHistory(tx, `Submitted Evidence for Job #${jobId}`);
       showToast("Work Submitted! AI is now evaluating...", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -473,10 +696,10 @@ export default function Home() {
 
     try {
       setLoadingAction(`chat-${jobId}`);
-      const tx = await sendGenLayerTransaction("send_message", [jobId, message]);
+      const tx = await sendGenLayerTransaction("send_message", [String(jobId), String(message)]);
       setChatInputs((prev) => ({ ...prev, [jobId]: "" }));
       showToast("Message sent to blockchain!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Message failed to send", "", "error");
     } finally {
@@ -492,10 +715,10 @@ export default function Home() {
     
     try {
       setLoadingAction(`appeal-${jobId}`);
-      const tx = await sendGenLayerTransaction("appeal_decision", [jobId, reason]);
+      const tx = await sendGenLayerTransaction("appeal_decision", [String(jobId), String(reason)]);
       saveToHistory(tx, `Appealed Job #${jobId}`);
       showToast("Appeal submitted to AI Supreme Judge!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -509,10 +732,10 @@ export default function Home() {
     
     try {
       setLoadingAction(`reject-${jobId}`);
-      const tx = await sendGenLayerTransaction("reject_work", [jobId]);
+      const tx = await sendGenLayerTransaction("reject_work", [String(jobId)]);
       saveToHistory(tx, `Confirmed Rejection for Job #${jobId}`);
       showToast("Rejection confirmed & Escrow refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -526,10 +749,10 @@ export default function Home() {
     
     try {
       setLoadingAction(`cancel-${jobId}`);
-      const tx = await sendGenLayerTransaction("cancel_job", [jobId]);
+      const tx = await sendGenLayerTransaction("cancel_job", [String(jobId)]);
       saveToHistory(tx, `Cancelled Job #${jobId}`);
       showToast("Job Cancelled & Funds Refunded!", tx, "info");
-      setTimeout(() => fetchJobsAndProfiles(), 3000);
+      refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
     } finally {
@@ -560,8 +783,8 @@ export default function Home() {
     setIsMenuOpen(false);
   };
 
-  const getProfileNick = (addr: string) => globalProfiles[addr.toLowerCase()]?.nickname || "";
-  const getProfileAvatar = (addr: string) => globalProfiles[addr.toLowerCase()]?.avatar || "";
+  const getProfileNick = (addr: string) => globalProfiles[canonicalAddress(addr)]?.nickname || "";
+  const getProfileAvatar = (addr: string) => globalProfiles[canonicalAddress(addr)]?.avatar || "";
 
   const displayAddr = (addr: string) => {
     if (!addr) return "";
@@ -570,9 +793,8 @@ export default function Home() {
     return nick ? `${nick} (${short})` : short;
   };
 
-  // FIXED: isMyJob safely handles potential "unknown_sender" from previous bug
-  const isMyJob = (job: any) =>
-    address && job.client && job.client.toLowerCase() === address.toLowerCase();
+  const isMyJob = (job: any) => Boolean(address) && sameAddress(job?.client, address);
+  const isAssignedFreelancer = (job: any) => Boolean(address) && sameAddress(job?.freelancer, address);
 
   const formatPrice = (weiStr: string | bigint) => {
     try {
@@ -612,16 +834,16 @@ export default function Home() {
   };
 
   const totalJobsCount = jobs.length;
-  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED" && !j.ai_decision.includes("Lost")).reduce((acc, curr) => acc + parseFloat(formatPrice(curr.price_wei)), 0).toFixed(2);
+  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED" && !String(j.ai_decision || "").includes("Lost")).reduce((acc, curr) => acc + parseFloat(formatPrice(curr.price_wei)), 0).toFixed(2);
   const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "AI_REJECTED", "APPEAL_APPROVED", "APPEAL_REJECTED", "COMPLETED"].includes(j.status)).length;
-  const approvedJobs = jobs.filter(j => j.status === "COMPLETED" && !j.ai_decision.includes("Lost")).length;
+  const approvedJobs = jobs.filter(j => j.status === "COMPLETED" && !String(j.ai_decision || "").includes("Lost")).length;
   const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
 
   const visibleJobs = jobs.filter(j => 
     !clearedJobs.includes(j.id) && 
     (filterCategory === "All" || j.category === filterCategory) &&
-    (j.desc.toLowerCase().includes(searchQuery.toLowerCase()) || 
-     (j.work_data && j.work_data.toLowerCase().includes(searchQuery.toLowerCase())))
+    (String(j.desc || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
+     (j.work_data && String(j.work_data).toLowerCase().includes(searchQuery.toLowerCase())))
   );
 
   return (
@@ -650,7 +872,7 @@ export default function Home() {
                 <h3 className="text-2xl font-extrabold text-white mb-1">{getProfileNick(selectedProfile) || "GenWork Profile"}</h3>
                 <p className="text-xs font-mono text-slate-400 mb-4 bg-black/30 py-1.5 px-2 rounded-lg border border-white/5 break-all">{selectedProfile}</p>
                 <div className="mb-6">
-                  {address && selectedProfile.toLowerCase() === address.toLowerCase() && (
+                  {address && sameAddress(selectedProfile, address) && (
                     <button onClick={() => setIsEditingProfile(true)} className="bg-white/10 hover:bg-white/20 text-white text-sm font-bold py-2 px-4 rounded-full transition-colors border border-white/10">
                       ✏️ Edit Profile Info
                     </button>
@@ -927,7 +1149,7 @@ export default function Home() {
                               {job.work_data && (
                                 <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
                                   <span className="font-semibold text-slate-500">Submitted Evidence:</span> 
-                                  {job.work_data.startsWith("http") ? (
+                                  {String(job.work_data).startsWith("http") ? (
                                     <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
                                       {job.work_data}
                                     </a>
@@ -971,9 +1193,9 @@ export default function Home() {
                                       <p className="text-xs text-slate-500 text-center italic">No messages yet. Be the first to start the discussion!</p>
                                     ) : (
                                       jobMessages.map((msg: any, i: number) => {
-                                        const isMe = address && msg.sender.toLowerCase() === address.toLowerCase();
-                                        const isClient = msg.sender.toLowerCase() === job.client.toLowerCase();
-                                        const isFreelancer = job.freelancer && msg.sender.toLowerCase() === job.freelancer.toLowerCase();
+                                        const isMe = Boolean(address) && sameAddress(msg.sender, address);
+                                        const isClient = sameAddress(msg.sender, job.client);
+                                        const isFreelancer = Boolean(job.freelancer) && sameAddress(msg.sender, job.freelancer);
                                         const msgAvatar = getProfileAvatar(msg.sender);
                                         
                                         return (
@@ -1090,13 +1312,18 @@ export default function Home() {
                                     {loadingAction === `reject-${job.id}` ? "Processing..." : "Confirm Rejection & Get Refund"}
                                   </button>
                                 </div>
-                              ) : (
+                              ) : isAssignedFreelancer(job) ? (
                                 <>
                                   <input type="text" placeholder="Argument for Supreme AI..." className="p-4 bg-black/40 border border-rose-900/50 rounded-xl text-white focus:outline-none focus:border-rose-500 w-full shadow-inner text-sm" value={appealReasons[job.id] || ""} onChange={(e) => setAppealReasons((prev) => ({ ...prev, [job.id]: e.target.value }))} />
                                   <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'appeal-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500 shadow-[0_0_20px_rgba(225,29,72,0.3)] hover:-translate-y-1'}`}>
                                     {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal to AI"}
                                   </button>
                                 </>
+                              ) : (
+                                <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner">
+                                  <span className="text-[15px]">AI Rejected Work</span>
+                                  <span className="text-xs">Waiting for freelancer appeal or client refund.</span>
+                                </div>
                               )
                             )}
 

@@ -1,4 +1,4 @@
-export const CONTRACT_ADDRESS = "0xBB411Cb2D7CBDDf8780Cf42455Fc4D0cdE9Cf7a3";
+export const CONTRACT_ADDRESS = "0x938E60D0b5466FcB0fA4c7677b7f7D3A3238D2F9";
 
 export const CONTRACT_ABI = [
   {
@@ -16,7 +16,7 @@ export const CONTRACT_ABI = [
     "type": "function",
     "inputs": [
       { "name": "job_id", "type": "string" },
-      { "name": "work_url", "type": "string" }
+      { "name": "work_data", "type": "string" }
     ],
     "outputs": []
   },
