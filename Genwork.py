@@ -11,22 +11,40 @@ class GenWork(gl.Contract):
         self.jobs_data = "[]"
         self.profiles_data = "{}"
 
-    @gl.public.write
-    def post_job(self, desc: str, price_arg: str, category: str) -> None:
-        client = gl.message.sender
+    # Safely get the sender address to prevent "unknown" bug
+    def _get_sender(self) -> str:
+        try:
+            return str(gl.message.sender.address).lower()
+        except Exception:
+            try:
+                return str(gl.message.sender).lower()
+            except Exception:
+                return "unknown_sender"
 
+    @gl.public.write.payable
+    def post_job(self, desc: str, category: str) -> None:
+        client = self._get_sender()
+        
+        try:
+            price_wei = int(gl.message.value)
+        except Exception:
+            price_wei = 0
+            
+        if price_wei <= 0:
+            raise Exception("Job price must be greater than zero. Native GEN required.")
+            
         try:
             jobs = json.loads(self.jobs_data)
         except Exception:
             jobs = []
-
+            
         new_id = str(len(jobs) + 1)
         
         jobs.append({
             "id": new_id,
-            "desc": desc,
-            "price_wei": price_arg, 
-            "category": category,
+            "desc": str(desc),
+            "price_wei": str(price_wei), 
+            "category": str(category),
             "client": client,
             "freelancer": "",
             "work_data": "", 
@@ -37,9 +55,8 @@ class GenWork(gl.Contract):
         self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
-    def submit_work(self, job_id: str, work_url: str) -> None:
-        freelancer = gl.message.sender
-        
+    def submit_work(self, job_id: str, work_data: str) -> None:
+        freelancer = self._get_sender()
         try:
             jobs = json.loads(self.jobs_data)
         except Exception:
@@ -52,16 +69,21 @@ class GenWork(gl.Contract):
         if job["status"] != "OPEN": return
         
         job["freelancer"] = freelancer
-        job["work_data"] = work_url
+        job["work_data"] = str(work_data)
         job["status"] = "EVALUATING"
         self.jobs_data = json.dumps(jobs)
 
         def leader_fn():
-            try:
-                evidence = gl.nondet.fetch_url(work_url)
-                fetched_text = evidence[:2000]
-            except Exception:
-                fetched_text = "FAILED_TO_FETCH_URL"
+            work_str = str(work_data)
+            fetched_text = ""
+            if work_str.startswith("http://") or work_str.startswith("https://"):
+                try:
+                    evidence = gl.nondet.fetch_url(work_str)
+                    fetched_text = f"URL Content: {evidence[:2000]}"
+                except Exception:
+                    fetched_text = f"Failed to fetch URL: {work_str}"
+            else:
+                fetched_text = f"Direct Text Submission: {work_str[:2000]}"
 
             prompt = f"""You are a strict QA AI Validator. 
             Job Description: {job['desc']}
@@ -82,11 +104,16 @@ class GenWork(gl.Contract):
             if result.get("decision") == "APPROVE":
                 job["status"] = "COMPLETED"
                 job["ai_decision"] = result.get("reason", "Approved.")
-                gl.send(job["freelancer"], int(job["price_wei"]))
+                try:
+                    gl.transfer(job["freelancer"], int(job["price_wei"]))
+                except Exception:
+                    try:
+                        gl.send(job["freelancer"], int(job["price_wei"]))
+                    except: pass
             else:
                 job["status"] = "AI_REJECTED"
                 job["ai_decision"] = result.get("reason", "Rejected.")
-        except Exception as e:
+        except Exception:
             job["status"] = "FAILED_EVALUATION"
             job["ai_decision"] = "AI Consensus System Failure."
 
@@ -109,11 +136,16 @@ class GenWork(gl.Contract):
         self.jobs_data = json.dumps(jobs)
 
         def leader_fn():
-            try:
-                evidence = gl.nondet.fetch_url(job["work_data"])
-                fetched_text = evidence[:2000]
-            except Exception:
-                fetched_text = "FAILED_TO_FETCH_URL"
+            work_str = str(job["work_data"])
+            fetched_text = ""
+            if work_str.startswith("http://") or work_str.startswith("https://"):
+                try:
+                    evidence = gl.nondet.fetch_url(work_str)
+                    fetched_text = f"URL Content: {evidence[:2000]}"
+                except Exception:
+                    fetched_text = "FAILED_TO_FETCH_URL"
+            else:
+                fetched_text = f"Direct Text Submission: {work_str[:2000]}"
 
             prompt = f"""You are the Supreme AI Judge evaluating an appeal.
             Job Description: {job['desc']}
@@ -134,11 +166,21 @@ class GenWork(gl.Contract):
             if result.get("decision") == "APPROVE":
                 job["status"] = "COMPLETED"
                 job["ai_decision"] = "Appeal Won: " + result.get("reason")
-                gl.send(job["freelancer"], int(job["price_wei"]))
+                try:
+                    gl.transfer(job["freelancer"], int(job["price_wei"]))
+                except Exception:
+                    try:
+                        gl.send(job["freelancer"], int(job["price_wei"]))
+                    except: pass
             else:
                 job["status"] = "APPEAL_REJECTED"
                 job["ai_decision"] = "Appeal Lost: " + result.get("reason")
-                gl.send(job["client"], int(job["price_wei"]))
+                try:
+                    gl.transfer(job["client"], int(job["price_wei"]))
+                except Exception:
+                    try:
+                        gl.send(job["client"], int(job["price_wei"]))
+                    except: pass
         except Exception:
             job["status"] = "AI_REJECTED"
             job["ai_decision"] = "Appeal Processing Failed."
@@ -148,7 +190,7 @@ class GenWork(gl.Contract):
 
     @gl.public.write
     def reject_work(self, job_id: str) -> None:
-        caller = gl.message.sender
+        caller = self._get_sender()
         try:
             jobs = json.loads(self.jobs_data)
         except Exception:
@@ -161,12 +203,17 @@ class GenWork(gl.Contract):
         if job["client"] == caller and job["status"] == "AI_REJECTED":
             job["status"] = "CANCELLED"
             job["ai_decision"] = "Client confirmed rejection. Escrow refunded."
-            gl.send(job["client"], int(job["price_wei"]))
+            try:
+                gl.transfer(job["client"], int(job["price_wei"]))
+            except Exception:
+                try:
+                    gl.send(job["client"], int(job["price_wei"]))
+                except: pass
             self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
     def cancel_job(self, job_id: str) -> None:
-        client = gl.message.sender
+        client = self._get_sender()
         try:
             jobs = json.loads(self.jobs_data)
         except Exception:
@@ -178,12 +225,17 @@ class GenWork(gl.Contract):
         
         if job["client"] == client and job["status"] in ["OPEN", "FAILED_EVALUATION"]:
             job["status"] = "CANCELLED"
-            gl.send(job["client"], int(job["price_wei"]))
+            try:
+                gl.transfer(job["client"], int(job["price_wei"]))
+            except Exception:
+                try:
+                    gl.send(job["client"], int(job["price_wei"]))
+                except: pass
             self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
     def send_message(self, job_id: str, message: str) -> None:
-        sender = gl.message.sender
+        sender = self._get_sender()
         try:
             jobs = json.loads(self.jobs_data)
         except Exception:
@@ -193,18 +245,18 @@ class GenWork(gl.Contract):
         if 0 <= idx < len(jobs):
             if "messages" not in jobs[idx]:
                 jobs[idx]["messages"] = []
-            jobs[idx]["messages"].append({"sender": sender, "text": message})
+            jobs[idx]["messages"].append({"sender": sender, "text": str(message)})
             self.jobs_data = json.dumps(jobs)
 
     @gl.public.write
     def update_profile(self, nickname: str, avatar_url: str) -> None:
-        caller = gl.message.sender
+        caller = self._get_sender()
         try:
             profiles = json.loads(self.profiles_data)
         except Exception:
             return
             
-        profiles[caller] = {"nickname": nickname, "avatar": avatar_url}
+        profiles[caller] = {"nickname": str(nickname), "avatar": str(avatar_url)}
         self.profiles_data = json.dumps(profiles)
 
     @gl.public.view
@@ -212,4 +264,3 @@ class GenWork(gl.Contract):
 
     @gl.public.view
     def get_profiles(self) -> str: return self.profiles_data
-        
