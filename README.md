@@ -19,17 +19,20 @@
 
 **GenWork** redefines the freelance economy by integrating **GenLayer's Optimistic Democracy**. Traditional escrow platforms rely on centralized human mediators to resolve disputes. GenWork replaces this with highly capable AI algorithms running directly on the blockchain. 
 
-When a freelancer submits their work (URL or raw text), the AI evaluates it strictly against the client's original criteria. If approved, the smart contract greenlights the transaction for a secure, one-click payment.
+Each job is bound to client-authored acceptance criteria. Freelancers submit an authenticated evidence envelope (sender-bound, content-hashed, `https`/`ipfs` allowlisted — not a bare URL or unauthenticated text). GenLayer AI scores the deliverable against those criteria. **AI approval does not pay.** Escrow stays locked in a client challenge window; the client may accept, submit counter-evidence, or let anyone finalize after the deadline.
 
 ---
 
 ## ✨ Key Features
 
-*   🤖 **Strict AI Evaluation:** GenLayer's AI directly reads and validates submissions. It acts as an unbiased QA tester—rejecting lazy inputs and ensuring high-quality deliveries.
-*   👤 **Global On-Chain Profiles:** Users can set custom Nicknames and Avatar URLs directly on the blockchain. Profiles display transparent, real-time stats including total jobs posted, jobs completed, and lifetime GEN earnings.
-*   💬 **On-Chain Discussion:** A fully decentralized messaging system allows clients and freelancers to communicate securely within the job portal.
-*   💳 **Secure One-Click Payments:** Seamless integration with MetaMask via Wagmi. Clients can approve and pay the exact GEN reward with a single transaction.
-*   ⚖️ **AI Dispute & Appeal System:** If work is rejected, freelancers can submit an appeal reason, prompting the AI to re-evaluate the context.
+*   📋 **Explicit Acceptance Criteria:** Clients attach 1–8 pass/fail rules at job creation. The contract, not just the prompt, requires every criterion id to pass.
+*   🔐 **Authenticated Evidence:** Submissions are `genwork.evidence.v1` envelopes: tx-sender attestation, SHA-256 of UTF-8 bytes, `https:`/`ipfs:` allowlist, fail-closed fetch+hash, 4KiB body snapshot.
+*   ⏳ **Client Challenge Window:** AI/appeal approve holds native GEN. Client can `accept_work` early or `challenge_work` with counter-evidence. `finalize_payout` only after the window (or to complete a parked verdict).
+*   🤖 **Strict AI Evaluation:** GenLayer validators score the envelope against the stored criteria. Provenance failure is a hard REJECT.
+*   👤 **Global On-Chain Profiles:** Users can set custom Nicknames and Avatar URLs directly on the blockchain.
+*   💬 **On-Chain Discussion:** Clients and freelancers can message on-chain inside each job.
+*   💳 **Native GEN Escrow:** MetaMask + Wagmi. `post_job` is payable; payout is `_Wallet.emit_transfer` after accept / successful challenge outcome / finalize — never on AI approve.
+*   ⚖️ **AI Dispute & Appeal System:** Rejected work can be appealed or resubmitted with a new envelope. Appeal approve still enters the challenge window.
 *   📊 **Live Transparency Dashboard:** The homepage features a real-time statistical dashboard showing Total GEN Paid, Total Jobs Listed, and the AI Approval Rate.
 *   🔍 **Smart Search & Filtering:** Browse the marketplace effortlessly using Categories (Web3, AI, Design, etc.) and a real-time search engine.
 *   🚀 **Social Integration:** One-click "Share on X (Twitter)" button to boost job visibility across social media.
@@ -38,10 +41,10 @@ When a freelancer submits their work (URL or raw text), the AI evaluates it stri
 
 ## ⚙️ How It Works
 
-1. **📝 Post a Job:** The client describes the task in natural language, selects a category, and sets the GEN reward.
-2. **📤 Submit Work:** Freelancers complete the task and submit a URL or text proof directly to the smart contract.
-3. **🧠 AI Evaluates:** GenLayer AI automatically checks the submission against the original requirements and makes an instant decision (Approve/Reject).
-4. **💰 Get Paid:** Upon AI approval, the client confirms the job, and funds are securely transferred to the freelancer's wallet.
+1. **📝 Post a Job:** Client sets description, category, 1–8 acceptance criteria, challenge-window length, and locks native GEN.
+2. **📤 Submit Authenticated Evidence:** Freelancer submits a bound envelope (inline UTF-8 or allowlisted URI + content hash), not a bare link.
+3. **🧠 AI Evaluates:** GenLayer consensus scores each criterion. Approve → `CHALLENGE_WINDOW` (escrow still locked). Reject → appeal or resubmit.
+4. **⏳ Challenge / Accept / Finalize:** Client may accept (pay freelancer) or challenge with counter-evidence. After the deadline, anyone may `finalize_payout`. `COMPLETED` means the freelancer was paid.
 
 ---
 

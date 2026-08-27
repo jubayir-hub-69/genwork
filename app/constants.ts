@@ -1,4 +1,4 @@
-export const CONTRACT_ADDRESS = "0x938E60D0b5466FcB0fA4c7677b7f7D3A3238D2F9";
+export const CONTRACT_ADDRESS = "0xd894234d7b266a588e0DeF60B075ef63C40c80C5";
 
 export const CONTRACT_ABI = [
   {
@@ -7,7 +7,9 @@ export const CONTRACT_ABI = [
     "stateMutability": "payable",
     "inputs": [
       { "name": "desc", "type": "string" },
-      { "name": "category", "type": "string" }
+      { "name": "category", "type": "string" },
+      { "name": "criteria_json", "type": "string" },
+      { "name": "challenge_window_secs", "type": "string" }
     ],
     "outputs": []
   },
@@ -16,7 +18,7 @@ export const CONTRACT_ABI = [
     "type": "function",
     "inputs": [
       { "name": "job_id", "type": "string" },
-      { "name": "work_data", "type": "string" }
+      { "name": "evidence_json", "type": "string" }
     ],
     "outputs": []
   },
@@ -26,6 +28,31 @@ export const CONTRACT_ABI = [
     "inputs": [
       { "name": "job_id", "type": "string" },
       { "name": "appeal_reason", "type": "string" }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "challenge_work",
+    "type": "function",
+    "inputs": [
+      { "name": "job_id", "type": "string" },
+      { "name": "counter_evidence_json", "type": "string" }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "accept_work",
+    "type": "function",
+    "inputs": [
+      { "name": "job_id", "type": "string" }
+    ],
+    "outputs": []
+  },
+  {
+    "name": "finalize_payout",
+    "type": "function",
+    "inputs": [
+      { "name": "job_id", "type": "string" }
     ],
     "outputs": []
   },

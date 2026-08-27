@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:invariants": "node tests/steward-invariants.mjs"
+    "test:invariants": "node tests/steward-invariants.mjs",
+    "deploy:contract": "python contracts/deploy.py"
   },
   "dependencies": {
     "@rainbow-me/rainbowkit": "^2.2.11",

@@ -84,6 +84,73 @@ const parseJobsPayload = (raw: unknown): any[] => {
   }
 };
 
+const WINDOW_OPTIONS = [
+  { secs: "3600", label: "1 hour" },
+  { secs: "86400", label: "24 hours (recommended)" },
+  { secs: "604800", label: "7 days" },
+] as const;
+
+const EVIDENCE_TYPES = [
+  { value: "any", label: "Any (inline or URL)" },
+  { value: "inline_text", label: "Inline text" },
+  { value: "https_document", label: "HTTPS document" },
+  { value: "ipfs_cid", label: "IPFS CID" },
+] as const;
+
+const emptyEvidenceDraft = () => ({
+  evidenceType: "inline_text",
+  uri: "",
+  body: "",
+  contentHash: "",
+});
+
+const sha256Hex = async (text: string): Promise<string> => {
+  const bytes = new TextEncoder().encode(text);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, "0")).join("");
+};
+
+const authorStatement = (role: "freelancer_submission" | "client_challenge", jobId: string, criteriaHash: string) => {
+  if (role === "client_challenge") {
+    return `I challenge GenWork job ${jobId} against criteria ${criteriaHash}.`;
+  }
+  return `I produced this deliverable for GenWork job ${jobId} against criteria ${criteriaHash}.`;
+};
+
+const remainingWindowSecs = (deadline: unknown, nowMs: number) => {
+  const unix = Number(deadline);
+  if (!Number.isFinite(unix) || unix <= 0) return 0;
+  return Math.max(0, Math.floor(unix - nowMs / 1000));
+};
+
+const formatRemaining = (secs: number) => {
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  return `${h}h ${m}m ${s}s`;
+};
+
+const formatDeadline = (deadline: unknown) => {
+  const unix = Number(deadline);
+  if (!Number.isFinite(unix) || unix <= 0) return "";
+  try {
+    return new Date(unix * 1000).toISOString();
+  } catch {
+    return String(deadline);
+  }
+};
+
+const parseEnvelope = (raw: unknown): Record<string, any> | null => {
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, any>;
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const parseProfilesPayload = (raw: unknown): Record<string, any> => {
   try {
     let data: unknown = unwrapCalldata(raw);
@@ -493,8 +560,12 @@ export default function Home() {
   
   const [jobs, setJobs] = useState<any[]>([]);
   const [clearedJobs, setClearedJobs] = useState<string[]>([]);
-  const [workInputs, setWorkInputs] = useState<Record<string, string>>({});
   const [appealReasons, setAppealReasons] = useState<Record<string, string>>({});
+  const [criteriaRows, setCriteriaRows] = useState([{ statement: "", evidenceType: "any" }]);
+  const [challengeWindowSecs, setChallengeWindowSecs] = useState("86400");
+  const [evidenceDrafts, setEvidenceDrafts] = useState<Record<string, ReturnType<typeof emptyEvidenceDraft>>>({});
+  const [counterDrafts, setCounterDrafts] = useState<Record<string, ReturnType<typeof emptyEvidenceDraft>>>({});
+  const [nowMs, setNowMs] = useState(() => Date.now());
   
   const [chatInputs, setChatInputs] = useState<Record<string, string>>({});
   const [expandedChat, setExpandedChat] = useState<Record<string, boolean>>({});
@@ -583,6 +654,11 @@ export default function Home() {
     };
   }, [fetchJobsAndProfiles]);
 
+  useEffect(() => {
+    const id = window.setTimeout(() => setNowMs(Date.now()), 1000);
+    return () => window.clearTimeout(id);
+  }, [nowMs]);
+
   const openProfileModal = (addr: string) => {
     if (!addr) return;
     const formattedAddr = canonicalAddress(addr) || String(addr).toLowerCase();
@@ -635,11 +711,50 @@ export default function Home() {
     } finally { setLoadingAction(null); }
   };
 
+  const buildEvidenceEnvelope = async (
+    job: any,
+    draft: ReturnType<typeof emptyEvidenceDraft>,
+    role: "freelancer_submission" | "client_challenge",
+  ) => {
+    const evidenceType = draft.evidenceType === "any" ? (draft.uri.trim() ? "https_document" : "inline_text") : draft.evidenceType;
+    let hex = (draft.contentHash || "").replace(/^sha256:/, "").toLowerCase();
+    if (evidenceType === "inline_text") {
+      if (!draft.body.trim()) throw new Error("Paste the deliverable text.");
+      hex = await sha256Hex(draft.body);
+    } else if (!hex) {
+      throw new Error("Provide the SHA-256 (UTF-8 text) of the hosted file.");
+    }
+    return {
+      schema: "genwork.evidence.v1",
+      evidence_type: evidenceType,
+      uri: evidenceType === "inline_text" ? "" : draft.uri.trim(),
+      body: evidenceType === "inline_text" ? draft.body : "",
+      content_hash: `sha256:${hex}`,
+      author_statement: authorStatement(role, String(job.id), String(job.criteria_hash || "")),
+      attested_by: canonicalAddress(address),
+      job_id: String(job.id),
+      criteria_hash: String(job.criteria_hash || ""),
+      role,
+    };
+  };
+
   const handlePostJob = async () => {
     if (loadingAction) return;
     if (!jobDesc || !jobPrice) return showToast("Please fill all fields", "", "error");
+    if (jobDesc.trim().length < 10) return showToast("Job description must be at least 10 characters", "", "error");
     if (isNaN(Number(jobPrice)) || Number(jobPrice) <= 0) return showToast("Enter a valid price", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
+    const trimmedCriteria = criteriaRows.map((row) => ({
+      statement: row.statement.trim(),
+      evidenceType: row.evidenceType,
+    }));
+    if (trimmedCriteria.some((row) => row.statement.length < 10 || row.statement.length > 500)) {
+      return showToast("Each criterion must be 10–500 characters", "", "error");
+    }
+    const windowSecs = Number(challengeWindowSecs);
+    if (![3600, 86400, 604800].includes(windowSecs)) {
+      return showToast("Choose a valid challenge window", "", "error");
+    }
     
     try {
       const priceWei = parseEther(jobPrice);
@@ -648,15 +763,23 @@ export default function Home() {
         return showToast("Insufficient GEN in your wallet.", "", "error");
       }
 
+      const criteriaJson = JSON.stringify(trimmedCriteria.map((row, i) => ({
+        id: `c${i + 1}`,
+        statement: row.statement,
+        evidence_type: row.evidenceType,
+      })));
+
       setLoadingAction("post");
       showToast("Approve the transaction in MetaMask to lock funds...", "", "info");
       
-      const tx = await sendGenLayerTransaction("post_job", [String(jobDesc), String(jobCategory)], priceWei);
+      const tx = await sendGenLayerTransaction("post_job", [String(jobDesc), String(jobCategory), String(criteriaJson), String(challengeWindowSecs)], priceWei);
       
       saveToHistory(tx, `Posted Job [${jobCategory}] and locked ${jobPrice} GEN`);
       setJobDesc("");
       setJobPrice("");
       setJobCategory(CATEGORIES[0]);
+      setCriteriaRows([{ statement: "", evidenceType: "any" }]);
+      setChallengeWindowSecs("86400");
       showToast("Job Posted & Escrow Locked!", tx, "success");
       
       refreshAfterTx();
@@ -670,16 +793,69 @@ export default function Home() {
 
   const handleSubmitWork = async (jobId: string) => {
     if (loadingAction) return;
-    const workData = workInputs[jobId];
-    // FIXED: Now accepts plain text OR links! Removed the strict URL check.
-    if (!workData || workData.trim() === "") return showToast("Please provide work evidence (Text or Link)!", "", "error");
     if (!address) return showToast("Connect wallet first", "", "error");
+    const job = jobs.find((item) => String(item.id) === String(jobId));
+    if (!job) return showToast("Job not found", "", "error");
+    const draft = evidenceDrafts[jobId] || emptyEvidenceDraft();
     
     try {
       setLoadingAction(`submit-${jobId}`);
-      const tx = await sendGenLayerTransaction("submit_work", [String(jobId), String(workData)]);
+      const envelope = await buildEvidenceEnvelope(job, draft, "freelancer_submission");
+      const tx = await sendGenLayerTransaction("submit_work", [String(jobId), JSON.stringify(envelope)]);
       saveToHistory(tx, `Submitted Evidence for Job #${jobId}`);
-      showToast("Work Submitted! AI is now evaluating...", tx, "info");
+      showToast("Work submitted. AI is evaluating — escrow stays locked in a challenge window if approved.", tx, "info");
+      refreshAfterTx();
+    } catch (error: any) {
+      showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleAcceptWork = async (jobId: string) => {
+    if (loadingAction) return;
+    if (!address) return showToast("Connect wallet first", "", "error");
+    try {
+      setLoadingAction(`accept-${jobId}`);
+      const tx = await sendGenLayerTransaction("accept_work", [String(jobId)]);
+      saveToHistory(tx, `Accepted Job #${jobId}`);
+      showToast("Work accepted. Escrow released to freelancer.", tx, "success");
+      refreshAfterTx();
+    } catch (error: any) {
+      showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleChallengeWork = async (jobId: string) => {
+    if (loadingAction) return;
+    if (!address) return showToast("Connect wallet first", "", "error");
+    const job = jobs.find((item) => String(item.id) === String(jobId));
+    if (!job) return showToast("Job not found", "", "error");
+    const draft = counterDrafts[jobId] || emptyEvidenceDraft();
+    try {
+      setLoadingAction(`challenge-${jobId}`);
+      const envelope = await buildEvidenceEnvelope(job, draft, "client_challenge");
+      const tx = await sendGenLayerTransaction("challenge_work", [String(jobId), JSON.stringify(envelope)]);
+      saveToHistory(tx, `Challenged Job #${jobId}`);
+      showToast("Challenge submitted. AI is scoring the snapshot plus your counter-evidence.", tx, "info");
+      refreshAfterTx();
+    } catch (error: any) {
+      showToast(error.message || "Transaction failed", "", "error");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const handleFinalizePayout = async (jobId: string) => {
+    if (loadingAction) return;
+    if (!address) return showToast("Connect wallet first", "", "error");
+    try {
+      setLoadingAction(`finalize-${jobId}`);
+      const tx = await sendGenLayerTransaction("finalize_payout", [String(jobId)]);
+      saveToHistory(tx, `Finalized payout for Job #${jobId}`);
+      showToast("Payout finalized.", tx, "success");
       refreshAfterTx();
     } catch (error: any) {
       showToast(error.message || "Transaction failed", "", "error");
@@ -769,7 +945,7 @@ export default function Home() {
   };
 
   const handleClearCompleted = () => {
-    const completedIds = jobs.filter(j => ["COMPLETED", "CANCELLED", "APPEAL_REJECTED"].includes(j.status)).map(j => j.id);
+    const completedIds = jobs.filter(j => ["COMPLETED", "CANCELLED", "APPEAL_REJECTED", "CHALLENGE_UPHELD"].includes(j.status)).map(j => j.id);
     if (completedIds.length === 0) return showToast("No resolved jobs to clear.", "", "info");
     
     const newCleared = [...new Set([...clearedJobs, ...completedIds])];
@@ -807,15 +983,17 @@ export default function Home() {
   const getStatusStyle = (status: string) => {
     switch(status) {
       case "COMPLETED": 
-      case "AI_APPROVED":
-      case "APPEAL_APPROVED": 
         return "bg-gradient-to-r from-emerald-500/20 to-teal-600/20 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(52,211,153,0.2)]";
+      case "CHALLENGE_WINDOW":
+        return "bg-gradient-to-r from-teal-500/20 to-cyan-600/20 text-teal-300 border-teal-500/30 shadow-[0_0_10px_rgba(45,212,191,0.2)]";
       case "AI_REJECTED": 
       case "APPEAL_REJECTED":
       case "FAILED_EVALUATION":
+      case "CHALLENGE_UPHELD":
         return "bg-gradient-to-r from-rose-500/20 to-red-600/20 text-rose-400 border-rose-500/30 shadow-[0_0_10px_rgba(225,29,72,0.2)]";
       case "EVALUATING":
       case "APPEAL_IN_PROGRESS":
+      case "CHALLENGE_EVALUATING":
         return "bg-gradient-to-r from-amber-500/20 to-orange-600/20 text-amber-400 border-amber-500/30 shadow-[0_0_10px_rgba(245,158,11,0.2)]";
       case "OPEN": 
         return "bg-gradient-to-r from-blue-500/20 to-indigo-600/20 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]";
@@ -834,17 +1012,28 @@ export default function Home() {
   };
 
   const totalJobsCount = jobs.length;
-  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED" && !String(j.ai_decision || "").includes("Lost")).reduce((acc, curr) => acc + parseFloat(formatPrice(curr.price_wei)), 0).toFixed(2);
-  const evaluatedJobs = jobs.filter(j => ["AI_APPROVED", "AI_REJECTED", "APPEAL_APPROVED", "APPEAL_REJECTED", "COMPLETED"].includes(j.status)).length;
-  const approvedJobs = jobs.filter(j => j.status === "COMPLETED" && !String(j.ai_decision || "").includes("Lost")).length;
-  const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedJobs / evaluatedJobs) * 100) : 0;
+  const totalGenPaid = jobs.filter(j => j.status === "COMPLETED").reduce((acc, curr) => acc + parseFloat(formatPrice(curr.price_wei)), 0).toFixed(2);
+  const approvedForRate = jobs.filter(j => ["CHALLENGE_WINDOW", "CHALLENGE_EVALUATING", "COMPLETED"].includes(j.status)).length;
+  const evaluatedJobs = jobs.filter(j => ["CHALLENGE_WINDOW", "CHALLENGE_EVALUATING", "COMPLETED", "AI_REJECTED", "APPEAL_REJECTED", "CHALLENGE_UPHELD"].includes(j.status)).length;
+  const aiApprovalRate = evaluatedJobs > 0 ? Math.round((approvedForRate / evaluatedJobs) * 100) : 0;
 
   const visibleJobs = jobs.filter(j => 
     !clearedJobs.includes(j.id) && 
     (filterCategory === "All" || j.category === filterCategory) &&
     (String(j.desc || "").toLowerCase().includes(searchQuery.toLowerCase()) || 
-     (j.work_data && String(j.work_data).toLowerCase().includes(searchQuery.toLowerCase())))
+     (j.work_data && String(j.work_data).toLowerCase().includes(searchQuery.toLowerCase())) ||
+     JSON.stringify(j.criteria || []).toLowerCase().includes(searchQuery.toLowerCase()))
   );
+
+  const updateEvidenceDraft = (store: "evidence" | "counter", jobId: string, patch: Partial<ReturnType<typeof emptyEvidenceDraft>>) => {
+    const setter = store === "evidence" ? setEvidenceDrafts : setCounterDrafts;
+    setter((prev) => ({ ...prev, [jobId]: { ...(prev[jobId] || emptyEvidenceDraft()), ...patch } }));
+  };
+
+  const hashDraftBody = async (store: "evidence" | "counter", jobId: string, body: string) => {
+    const hex = body ? await sha256Hex(body) : "";
+    updateEvidenceDraft(store, jobId, { body, contentHash: hex });
+  };
 
   return (
     <main className="min-h-screen text-slate-200 font-sans selection:bg-blue-500/30 w-full overflow-x-hidden relative">
@@ -1056,7 +1245,67 @@ export default function Home() {
                     </select>
                   </div>
                   
-                  <textarea className="w-full p-5 bg-[#060c18]/80 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-blue-500 resize-none transition-colors shadow-inner" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done..."></textarea>
+                  <textarea className="w-full p-5 bg-[#060c18]/80 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-blue-500 resize-none transition-colors shadow-inner" rows={4} value={jobDesc} onChange={(e) => setJobDesc(e.target.value)} placeholder="Describe what needs to be done (min 10 characters)..."></textarea>
+
+                  <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between px-1">
+                      <label className="text-sm font-bold text-slate-400">Acceptance Criteria (1–8)</label>
+                      <button
+                        type="button"
+                        disabled={criteriaRows.length >= 8}
+                        onClick={() => setCriteriaRows((prev) => prev.length >= 8 ? prev : [...prev, { statement: "", evidenceType: "any" }])}
+                        className="text-xs font-bold text-blue-300 hover:text-white disabled:text-slate-600"
+                      >
+                        + Add criterion
+                      </button>
+                    </div>
+                    {criteriaRows.map((row, idx) => (
+                      <div key={idx} className="bg-[#060c18]/80 border border-white/10 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-extrabold text-slate-500">c{idx + 1}</span>
+                          <button
+                            type="button"
+                            disabled={criteriaRows.length <= 1}
+                            onClick={() => setCriteriaRows((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-xs font-bold text-rose-400 disabled:text-slate-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        <textarea
+                          rows={2}
+                          value={row.statement}
+                          onChange={(e) => setCriteriaRows((prev) => prev.map((item, i) => i === idx ? { ...item, statement: e.target.value } : item))}
+                          placeholder="What must be true for this job to be accepted?"
+                          className="w-full p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500 resize-none"
+                        />
+                        <select
+                          value={row.evidenceType}
+                          onChange={(e) => setCriteriaRows((prev) => prev.map((item, i) => i === idx ? { ...item, evidenceType: e.target.value } : item))}
+                          className="w-full p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-blue-500"
+                        >
+                          {EVIDENCE_TYPES.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                        </select>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col gap-2">
+                    <label className="text-sm font-bold text-slate-400 px-1">Challenge Window</label>
+                    <select
+                      className="w-full p-4 bg-[#060c18]/80 border border-white/10 rounded-2xl text-white focus:outline-none focus:border-blue-500 shadow-inner appearance-none cursor-pointer"
+                      value={challengeWindowSecs}
+                      onChange={(e) => setChallengeWindowSecs(e.target.value)}
+                    >
+                      {WINDOW_OPTIONS.map((opt) => <option key={opt.secs} value={opt.secs}>{opt.label}</option>)}
+                    </select>
+                    <p className="text-xs text-slate-500 px-1 leading-relaxed">
+                      Escrow stays locked after AI approval until you accept, you challenge, or the window ends and anyone finalizes.
+                      The window starts at the submit/appeal transaction timestamp (includes AI consensus time, often several minutes).
+                      Minimum 1 hour so the hold is still open when it first appears on the Job Board.
+                      One evidence envelope must satisfy every criterion — if any criterion requires a URL, the freelancer cannot submit inline-only.
+                    </p>
+                  </div>
                   
                   <div className="flex flex-col gap-2">
                     <label className="text-sm font-bold text-slate-400 px-1">Escrow Reward (Real GEN Tokens)</label>
@@ -1132,6 +1381,31 @@ export default function Home() {
                             </div>
                             
                             <h3 className="text-2xl font-extrabold text-white mb-3 break-words whitespace-normal leading-snug">{job.desc}</h3>
+                            {Array.isArray(job.criteria) && job.criteria.length > 0 && (
+                              <div className="mb-4 bg-black/20 p-4 rounded-2xl border border-white/5">
+                                <p className="text-xs font-semibold text-slate-500 mb-2">Acceptance criteria</p>
+                                <ul className="space-y-2">
+                                  {job.criteria.map((crit: any) => {
+                                    const result = Array.isArray(job.ai_criteria_results)
+                                      ? job.ai_criteria_results.find((row: any) => String(row.id) === String(crit.id))
+                                      : null;
+                                    const passed = result?.pass === true;
+                                    const failed = result && result.pass !== true;
+                                    return (
+                                      <li key={String(crit.id)} className="text-sm text-slate-300 flex flex-col gap-1">
+                                        <span className="flex flex-wrap items-center gap-2">
+                                          <span className="text-[10px] font-extrabold text-slate-500 uppercase">{crit.id}</span>
+                                          <span className="text-[10px] bg-white/5 border border-white/10 px-2 py-0.5 rounded">{crit.evidence_type}</span>
+                                          {passed && <span className="text-[10px] font-extrabold text-emerald-400">PASS</span>}
+                                          {failed && <span className="text-[10px] font-extrabold text-rose-400">FAIL</span>}
+                                        </span>
+                                        <span>{crit.statement}</span>
+                                      </li>
+                                    );
+                                  })}
+                                </ul>
+                              </div>
+                            )}
                             
                             <div className="flex flex-col gap-2 mb-4 bg-black/20 p-4 rounded-2xl border border-white/5">
                               {job.client && (
@@ -1146,18 +1420,48 @@ export default function Home() {
                                   <span onClick={() => openProfileModal(job.freelancer)} className="font-mono bg-white/5 hover:bg-blue-500/20 px-2 py-1 rounded text-slate-300 hover:text-blue-300 border border-white/5 cursor-pointer transition-colors" title="View Profile">{displayAddr(job.freelancer)}</span>
                                 </p>
                               )}
-                              {job.work_data && (
+                              {(job.evidence || job.work_data) && (() => {
+                                const envelope = parseEnvelope(job.evidence) || parseEnvelope(job.work_data);
+                                return (
                                 <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
-                                  <span className="font-semibold text-slate-500">Submitted Evidence:</span> 
-                                  {String(job.work_data).startsWith("http") ? (
-                                    <a href={job.work_data} target="_blank" rel="noreferrer" className="text-blue-400 hover:text-blue-300 hover:underline truncate max-w-full block bg-black/30 p-2 rounded-lg border border-white/5 mt-1">
-                                      {job.work_data}
-                                    </a>
+                                  <span className="font-semibold text-slate-500">Submitted Evidence:</span>
+                                  {envelope ? (
+                                    <div className="bg-black/30 p-3 rounded-lg border border-white/5 text-slate-300 space-y-1 mt-1">
+                                      <p>Type: {envelope.evidence_type}</p>
+                                      {envelope.uri ? (
+                                        <a href={String(envelope.uri).startsWith("ipfs://") ? `https://ipfs.io/ipfs/${String(envelope.uri).slice(7)}` : envelope.uri} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline break-all">{envelope.uri}</a>
+                                      ) : (
+                                        <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{envelope.body}</div>
+                                      )}
+                                      <p className="font-mono break-all">hash {String(envelope.content_hash || "").slice(0, 22)}…</p>
+                                      <p className="text-slate-500">{envelope.author_statement}</p>
+                                      {job.body_preview && (
+                                        <div className="pt-2 border-t border-white/5">
+                                          <span className="font-semibold text-slate-500">Snapshot at submission (4KiB max)</span>
+                                          <div className="max-h-24 overflow-y-auto whitespace-pre-wrap mt-1">{String(job.body_preview).slice(0, 500)}</div>
+                                        </div>
+                                      )}
+                                    </div>
                                   ) : (
                                     <div className="bg-black/30 p-3 rounded-lg border border-white/5 text-slate-300 max-h-32 overflow-y-auto whitespace-pre-wrap mt-1">
-                                      {job.work_data}
+                                      {String(job.work_data)}
                                     </div>
                                   )}
+                                </div>
+                                );
+                              })()}
+                              {job.counter_evidence && Object.keys(job.counter_evidence || {}).length > 0 && (
+                                <div className="text-xs text-slate-400 flex flex-col gap-1 mt-2">
+                                  <span className="font-semibold text-slate-500">Client counter-evidence:</span>
+                                  <div className="bg-rose-950/20 p-3 rounded-lg border border-rose-900/40 text-slate-300 space-y-1 mt-1">
+                                    <p>Type: {job.counter_evidence.evidence_type}</p>
+                                    {job.counter_evidence.uri ? (
+                                      <a href={job.counter_evidence.uri} target="_blank" rel="noreferrer" className="text-blue-400 hover:underline break-all">{job.counter_evidence.uri}</a>
+                                    ) : (
+                                      <div className="max-h-24 overflow-y-auto whitespace-pre-wrap">{job.counter_evidence.body}</div>
+                                    )}
+                                    {job.challenge_reason && <p className="text-rose-300">{job.challenge_reason}</p>}
+                                  </div>
                                 </div>
                               )}
                             </div>
@@ -1165,7 +1469,7 @@ export default function Home() {
                             <div className="flex items-center gap-3">
                               <span className="text-sm font-semibold text-slate-300">Status:</span>
                               <span className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-widest border ${getStatusStyle(job.status)} flex items-center gap-1.5`}>
-                                {["OPEN", "EVALUATING", "APPEAL_IN_PROGRESS"].includes(job.status) && (
+                                {["OPEN", "EVALUATING", "APPEAL_IN_PROGRESS", "CHALLENGE_EVALUATING"].includes(job.status) && (
                                   <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse"></span>
                                 )}
                                 {job.status.replace(/_/g, ' ')}
@@ -1262,14 +1566,45 @@ export default function Home() {
                                 </div>
                               ) : (
                                 <>
-                                  <textarea 
-                                    placeholder="Paste Web Link (https://...) OR Type text proof..." 
-                                    className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner transition-colors resize-y min-h-[100px]" 
-                                    value={workInputs[job.id] || ""} 
-                                    onChange={(e) => setWorkInputs((prev) => ({ ...prev, [job.id]: e.target.value }))} 
-                                  />
+                                  <select
+                                    className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm w-full"
+                                    value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).evidenceType}
+                                    onChange={(e) => updateEvidenceDraft("evidence", job.id, { evidenceType: e.target.value })}
+                                  >
+                                    <option value="inline_text">Inline text</option>
+                                    <option value="https_document">HTTPS document</option>
+                                    <option value="ipfs_cid">IPFS CID</option>
+                                  </select>
+                                  {(evidenceDrafts[job.id] || emptyEvidenceDraft()).evidenceType === "inline_text" ? (
+                                    <textarea
+                                      placeholder="Paste UTF-8 text proof (not a PDF/image)..."
+                                      className="p-4 bg-black/40 border border-white/10 rounded-xl text-white focus:outline-none focus:border-blue-500 w-full shadow-inner resize-y min-h-[100px]"
+                                      value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).body}
+                                      onChange={(e) => { void hashDraftBody("evidence", job.id, e.target.value); }}
+                                    />
+                                  ) : (
+                                    <>
+                                      <input
+                                        type="text"
+                                        placeholder={(evidenceDrafts[job.id] || emptyEvidenceDraft()).evidenceType === "ipfs_cid" ? "ipfs://bafy..." : "https://raw.githubusercontent.com/..."}
+                                        className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm w-full"
+                                        value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).uri}
+                                        onChange={(e) => updateEvidenceDraft("evidence", job.id, { uri: e.target.value })}
+                                      />
+                                      <input
+                                        type="text"
+                                        placeholder="SHA-256 (UTF-8 text) of the hosted file"
+                                        className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm w-full font-mono"
+                                        value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).contentHash}
+                                        onChange={(e) => updateEvidenceDraft("evidence", job.id, { contentHash: e.target.value.replace(/^sha256:/, "") })}
+                                      />
+                                    </>
+                                  )}
+                                  {(evidenceDrafts[job.id] || emptyEvidenceDraft()).contentHash && (
+                                    <p className="text-[10px] font-mono text-slate-500 break-all">Binding hash sha256:{(evidenceDrafts[job.id] || emptyEvidenceDraft()).contentHash}</p>
+                                  )}
                                   <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'submit-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200 hover:scale-[1.02] shadow-[0_0_15px_rgba(255,255,255,0.2)]'}`}>
-                                    {loadingAction === `submit-${job.id}` ? "Sending to AI..." : "Submit to AI Evaluator"}
+                                    {loadingAction === `submit-${job.id}` ? "Sending to AI..." : "Submit authenticated evidence to AI"}
                                   </button>
                                 </>
                               )
@@ -1284,11 +1619,78 @@ export default function Home() {
                               </a>
                             )}
 
-                            {["EVALUATING", "APPEAL_IN_PROGRESS"].includes(job.status) && (
+                            {["EVALUATING", "APPEAL_IN_PROGRESS", "CHALLENGE_EVALUATING"].includes(job.status) && (
                               <div className="bg-amber-950/40 text-amber-400 py-6 px-4 rounded-2xl font-bold text-center border border-amber-700/50 flex flex-col items-center justify-center gap-2 shadow-[0_0_20px_rgba(217,119,6,0.15)]">
                                 <svg className="w-8 h-8 animate-spin-slow text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                                <span className="text-[15px]">Consensus in Progress...</span>
+                                <span className="text-[15px]">{job.status === "CHALLENGE_EVALUATING" ? "Challenge consensus in progress..." : "Consensus in Progress..."}</span>
                                 <span className="text-xs font-medium text-amber-500/70 bg-amber-950/50 px-3 py-1 rounded-full mt-1 border border-amber-900/50">Please wait for AI judgment</span>
+                                {job.status === "CHALLENGE_EVALUATING" && remainingWindowSecs(job.challenge_deadline, nowMs) <= 0 && (
+                                  <button onClick={() => handleFinalizePayout(job.id)} disabled={loadingAction !== null} className="mt-2 py-2 px-4 rounded-xl text-sm font-bold bg-white/10 text-white border border-white/10">
+                                    {loadingAction === `finalize-${job.id}` ? "Finalizing..." : "Unstick after deadline"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {job.status === "CHALLENGE_WINDOW" && (
+                              <div className="flex flex-col gap-3 w-full">
+                                <div className="bg-teal-950/40 text-teal-300 py-4 px-4 rounded-2xl font-bold text-center border border-teal-700/40">
+                                  <p className="text-[15px]">AI approved; funds on hold</p>
+                                  <p className="text-lg font-extrabold mt-1">{formatRemaining(remainingWindowSecs(job.challenge_deadline, nowMs))}</p>
+                                  <p className="text-[10px] text-teal-500/80 mt-1">{formatDeadline(job.challenge_deadline)}</p>
+                                </div>
+                                {isMyJob(job) ? (
+                                  <>
+                                    <p className="text-[11px] text-slate-500 text-center">Cancel is unavailable during the hold.</p>
+                                    <button onClick={() => handleAcceptWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-extrabold w-full ${loadingAction === 'accept-'+job.id ? 'bg-slate-800 text-slate-500' : 'bg-emerald-600 text-white hover:bg-emerald-500'}`}>
+                                      {loadingAction === `accept-${job.id}` ? "Accepting..." : "Accept work & release escrow"}
+                                    </button>
+                                    <select
+                                      className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm w-full"
+                                      value={(counterDrafts[job.id] || emptyEvidenceDraft()).evidenceType}
+                                      onChange={(e) => updateEvidenceDraft("counter", job.id, { evidenceType: e.target.value })}
+                                    >
+                                      <option value="inline_text">Inline counter-evidence</option>
+                                      <option value="https_document">HTTPS counter-evidence</option>
+                                      <option value="ipfs_cid">IPFS counter-evidence</option>
+                                    </select>
+                                    {(counterDrafts[job.id] || emptyEvidenceDraft()).evidenceType === "inline_text" ? (
+                                      <textarea
+                                        placeholder="Why this work fails the criteria..."
+                                        className="p-3 bg-black/40 border border-rose-900/40 rounded-xl text-white text-sm min-h-[80px]"
+                                        value={(counterDrafts[job.id] || emptyEvidenceDraft()).body}
+                                        onChange={(e) => { void hashDraftBody("counter", job.id, e.target.value); }}
+                                      />
+                                    ) : (
+                                      <>
+                                        <input type="text" placeholder="https:// or ipfs://" className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm" value={(counterDrafts[job.id] || emptyEvidenceDraft()).uri} onChange={(e) => updateEvidenceDraft("counter", job.id, { uri: e.target.value })} />
+                                        <input type="text" placeholder="SHA-256 of UTF-8 text" className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm font-mono" value={(counterDrafts[job.id] || emptyEvidenceDraft()).contentHash} onChange={(e) => updateEvidenceDraft("counter", job.id, { contentHash: e.target.value.replace(/^sha256:/, "") })} />
+                                      </>
+                                    )}
+                                    <button onClick={() => handleChallengeWork(job.id)} disabled={loadingAction !== null || remainingWindowSecs(job.challenge_deadline, nowMs) <= 0} className={`py-3 rounded-xl font-extrabold w-full ${loadingAction === 'challenge-'+job.id ? 'bg-slate-800 text-slate-500' : 'bg-rose-600 text-white hover:bg-rose-500'}`}>
+                                      {loadingAction === `challenge-${job.id}` ? "Challenging..." : "Submit challenge"}
+                                    </button>
+                                  </>
+                                ) : (
+                                  <p className="text-xs text-slate-400 text-center">Waiting for the client to accept or challenge.</p>
+                                )}
+                                {(String(job.challenge_decision || "") === "UPHOLD" || String(job.challenge_decision || "") === "OVERRULE" || remainingWindowSecs(job.challenge_deadline, nowMs) <= 0) && (
+                                  <button onClick={() => handleFinalizePayout(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold w-full border ${loadingAction === 'finalize-'+job.id ? 'text-slate-500 border-slate-700' : 'text-white border-white/20 hover:bg-white/10'}`}>
+                                    {loadingAction === `finalize-${job.id}` ? "Finalizing..." : "Finalize payout"}
+                                  </button>
+                                )}
+                              </div>
+                            )}
+
+                            {job.status === "CHALLENGE_UPHELD" && (
+                              <div className="bg-rose-950/40 text-rose-400 py-6 px-4 rounded-2xl font-bold text-center border border-rose-800/50 flex flex-col items-center justify-center gap-2">
+                                <span className="text-[15px]">Challenge upheld</span>
+                                <span className="text-xs text-rose-300/80 font-medium">{job.settled ? "Funds natively refunded to Client" : "Client won; payout pending"}</span>
+                                {!job.settled && (
+                                  <button onClick={() => handleFinalizePayout(job.id)} disabled={loadingAction !== null} className="mt-2 py-2 px-4 rounded-xl text-sm font-bold bg-white/10 text-white border border-white/10">
+                                    {loadingAction === `finalize-${job.id}` ? "Finalizing..." : "Finalize client refund"}
+                                  </button>
+                                )}
                               </div>
                             )}
 
@@ -1318,6 +1720,15 @@ export default function Home() {
                                   <button onClick={() => handleAppeal(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-extrabold transition-all w-full text-[15px] ${loadingAction === 'appeal-'+job.id ? 'bg-slate-800 text-slate-500 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-500 shadow-[0_0_20px_rgba(225,29,72,0.3)] hover:-translate-y-1'}`}>
                                     {loadingAction === `appeal-${job.id}` ? "Submitting..." : "Submit Appeal to AI"}
                                   </button>
+                                  <textarea
+                                    placeholder="Resubmit corrected UTF-8 evidence..."
+                                    className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm min-h-[70px]"
+                                    value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).body}
+                                    onChange={(e) => { void hashDraftBody("evidence", job.id, e.target.value); updateEvidenceDraft("evidence", job.id, { evidenceType: "inline_text" }); }}
+                                  />
+                                  <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold w-full border ${loadingAction === 'submit-'+job.id ? 'text-slate-500 border-slate-700' : 'text-white border-white/20 hover:bg-white/10'}`}>
+                                    {loadingAction === `submit-${job.id}` ? "Resubmitting..." : "Resubmit corrected evidence"}
+                                  </button>
                                 </>
                               ) : (
                                 <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner">
@@ -1332,6 +1743,18 @@ export default function Home() {
                                 <button onClick={() => handleCancelJob(job.id)} disabled={loadingAction !== null} className={`py-4 rounded-xl font-bold border transition-all w-full ${loadingAction === 'cancel-'+job.id ? 'bg-transparent text-slate-600 border-slate-700 cursor-not-allowed' : 'bg-rose-950/80 text-rose-400 border-rose-900 hover:bg-rose-900 shadow-sm'}`}>
                                   {loadingAction === `cancel-${job.id}` ? "Cancelling..." : "Cancel & Refund Escrow"}
                                 </button>
+                              ) : isAssignedFreelancer(job) ? (
+                                <>
+                                  <textarea
+                                    placeholder="Resubmit corrected UTF-8 evidence..."
+                                    className="p-3 bg-black/40 border border-white/10 rounded-xl text-white text-sm min-h-[70px]"
+                                    value={(evidenceDrafts[job.id] || emptyEvidenceDraft()).body}
+                                    onChange={(e) => { void hashDraftBody("evidence", job.id, e.target.value); updateEvidenceDraft("evidence", job.id, { evidenceType: "inline_text" }); }}
+                                  />
+                                  <button onClick={() => handleSubmitWork(job.id)} disabled={loadingAction !== null} className={`py-3 rounded-xl font-bold w-full border ${loadingAction === 'submit-'+job.id ? 'text-slate-500 border-slate-700' : 'text-white border-white/20 hover:bg-white/10'}`}>
+                                    {loadingAction === `submit-${job.id}` ? "Resubmitting..." : "Resubmit corrected evidence"}
+                                  </button>
+                                </>
                               ) : (
                                 <div className="bg-slate-900/60 text-slate-400 py-6 px-4 rounded-2xl font-bold text-center border border-slate-700/50 flex flex-col items-center justify-center gap-2 shadow-inner">
                                   <span className="text-[15px]">AI Error</span>
